@@ -33,7 +33,7 @@ public class Alarm {
 	 */
 	public void timerInterrupt() {
 		long curTime = Machine.timer().getTime();
-		boolean intStatus = Machine.interrupt().disabled();
+		boolean intStatus = Machine.interrupt().disable();
 
 		//wake up threads while threads or in cue
         while ( !waitQ.isEmpty() && waitQ.peek().waketime <= curTime) {
@@ -65,7 +65,7 @@ public class Alarm {
 		long wakeTime = Machine.timer().getTime() + x;
 		KThread thread = KThread.currentThread();
 		ThreadTime threadTime = new ThreadTime(thread, wakeTime);
-		boolean intStatus = Machine.interrupt().disabled();
+		boolean intStatus = Machine.interrupt().disable();
 		waitQ.add(threadTime);
 		//suspend thread
 		thread.sleep();
