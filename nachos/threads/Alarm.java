@@ -8,7 +8,7 @@ import nachos.machine.*;
  */
 public class Alarm {
 
-    private PriorityQueue<ThreadTime> waitQ;  //
+    private PriorityQueue<ThreadTime> waitQ = new PriorityQueue<ThreadTime>();  //
 
 	/**
 	 * Allocate a new Alarm. Set the machine's timer interrupt handler to this
@@ -33,7 +33,19 @@ public class Alarm {
 	 */
 	public void timerInterrupt() {
 		long curTime = Machine.timer().getTime();
+		boolean intStatus = Machine.interrupt().disabled();
+
+		//wake up threads while threads or in cue
+        while ( !waitQ.isEmpty() && waitQ.peek().waketime <= curTime) {
+            ThreadTime threadTime = waitQ.poll();
+            KThread thread = threadTime.thread;
+            if(thread != null){
+                thread.ready();
+            }
+        }
+
 	    KThread.currentThread().yield();
+        Machine.interrupt().restore(intStatus);
 	}
 
 	/**
@@ -49,12 +61,39 @@ public class Alarm {
 	 * @see nachos.machine.Timer#getTime()
 	 */
 	public void waitUntil(long x) {
-		// for now, cheat just to get something working (busy waiting is bad)
+		// for now, cheat just to get something working (busy waiting is bad) <- if you says so ...
 		long wakeTime = Machine.timer().getTime() + x;
 		KThread thread = KThread.currentThread();
-		while (wakeTime > Machine.timer().getTime())
-			KThread.yield();
+		ThreadTime threadTime = new ThreadTime(thread, wakeTime);
+		boolean intStatus = Machine.interrupt().disabled();
+		waitQ.add(threadTime);
+		//suspend thread
+		thread.sleep();
+		Machine.interrupt().restore(intStatus);
 	}
+
+
+	/* Testing Code */
+	public static void alarmTest1() {
+	    int durations[] = {1000, 10*1000, 100*1000};
+	    long t0, t1;
+
+	    for (int d: durations) {
+	        t0 = Machine.timer().getTime();
+	        ThreadedKernel.alarm.waitUntil (d);
+	        t1 = Machine.timer().getTime();
+	        System.out.println ("alarmTest1: waited for " + (t1 - t0) + "ticks");
+        }
+    }
+
+    //Implement more test methods here ...
+
+    // Invoke Alarm.selfTest() from ThreadedKernel.selfTest()
+    public static void selfTest() {
+	    alarmTest1();
+
+	    //Invoke your other test methods here ...
+    }
 
 	// private class created to define thread time objects that can be placed and sorted in queue
     private class ThreadTime implements Comparable<ThreadTime> {
