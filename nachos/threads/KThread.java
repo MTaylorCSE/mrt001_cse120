@@ -286,7 +286,7 @@ public class KThread {
 		Lib.debug(dbgThread, "Joining to thread: " + toString());
 
 		Lib.assertTrue(this != currentThread);
-		Lib.assertTrue( this.toBeResumed != null);
+		Lib.assertTrue( this.toBeResumed == null);
 		boolean intStatus = Machine.interrupt().disable();
 		if(this.status != statusFinished){
 			this.toBeResumed = currentThread;
@@ -425,6 +425,7 @@ public class KThread {
 		new KThread(new PingTest(1)).setName("forked thread").fork();
 		new PingTest(0).run();
 		joinTest1();
+		joinTest2();
 	}
 
 	private static final char dbgThread = 't';
@@ -504,5 +505,23 @@ public class KThread {
 		System.out.println("After joining, child1 should be finished.");
 		System.out.println("is it? " + (child1.status == statusFinished));
 		Lib.assertTrue((child1.status == statusFinished), " Expected child1 to be finished.");
+	}
+
+	/**
+	 * Tests that verifies if a parent calls join on a child and the child is still executing,
+	 * the parent waits
+	 */
+	private static void joinTest2 () {
+		System.out.println("Parent has started running");
+		KThread child1 = new KThread( new Runnable () {
+			public void run() {
+				System.out.println("Child is now running");
+			}
+		});
+
+		child1.setName("child1").fork();
+		child1.join();
+		System.out.println("This should print after 'Child is now...'");
+		Lib.assertTrue((child1.status == statusFinished), "Parent waited for child to finish" );
 	}
 }
