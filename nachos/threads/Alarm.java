@@ -8,7 +8,7 @@ import java.util.*;
  */
 public class Alarm {
 
-	private static HashMap<Long,KThread> waitQueue;
+	private static LinkedList<KThread> waitQueue = new LinkedList<>();
 	/**
 	 * Allocate a new Alarm. Set the machine's timer interrupt handler to this
 	 * alarm's callback.
@@ -31,7 +31,19 @@ public class Alarm {
 	 * should be run.
 	 */
 	public void timerInterrupt() {
-		KThread.currentThread().yield();
+
+			ListIterator<KThread> queueIterator = waitQueue.listIterator();
+			while (queueIterator.hasNext()) {
+				KThread current = queueIterator.next();
+				long curWakeTime = current.getWakeTime();
+				if (curWakeTime <= Machine.timer().getTime()) {
+					current.ready();
+					queueIterator.remove();
+				}
+			}
+
+		KThread.yield();
+
 	}
 
 	/**
@@ -47,9 +59,55 @@ public class Alarm {
 	 * @see nachos.machine.Timer#getTime()
 	 */
 	public void waitUntil(long x) {
-		// for now, cheat just to get something working (busy waiting is bad)
+
 		long wakeTime = Machine.timer().getTime() + x;
-		while (wakeTime > Machine.timer().getTime())
-			KThread.yield();
+
+		KThread.currentThread().setWakeTime(wakeTime);
+
+		waitQueue.add(KThread.currentThread());
+
+		KThread.sleep();
+
+	}
+	/**
+	 * Test whether the threads waits for approximately the time that was requested
+	 */
+	public static void alarmTest1() {
+		int durations[] = {1000, 10*1000, 100*1000};
+		long t0, t1;
+
+		for (int d: durations) {
+			t0 = Machine.timer().getTime();
+			ThreadedKernel.alarm.waitUntil (d);
+			t1 = Machine.timer().getTime();
+
+			System.out.println ("alarmTest1: waited for " + (t1 - t0) + "ticks");
+		}
+	}
+
+	/**
+	 * Test if thread does not wait when wait parameter is negative
+	 */
+	public static void alarmTest2() {
+		long t0, t1;
+
+		for(int i = -10; i < 1 ; ++i){
+			t0 = Machine.timer().getTime();
+			ThreadedKernel.alarm.waitUntil(i);
+			t1 = Machine.timer().getTime();
+
+			// we are told timer interrupts around 500 ticks so anything less than
+			// 600 means the machine did not wait
+			if( (t1-t0) < 600) {
+				System.out.println("alarmTest2: dope machine did not wait" );
+			}
+		}
+	}
+
+
+	// Invoke Alarm.selfTest() from ThreadedKernel.selfTest()
+	public static void selfTest() {
+		alarmTest1();
+		alarmTest2();
 	}
 }

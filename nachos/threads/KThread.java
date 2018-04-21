@@ -56,6 +56,7 @@ public class KThread {
 	public KThread() {
 		if (currentThread != null) {
 			tcb = new TCB();
+			wakeTime = 0;
 		}
 		else {
 			readyQueue = ThreadedKernel.scheduler.newThreadQueue(false);
@@ -70,6 +71,20 @@ public class KThread {
 		}
 	}
 
+	/**
+	 * Set the time when this thread should be woken up
+	 * @param time
+	 */
+	public void setWakeTime(long time){
+		wakeTime = time;
+	}
+
+	/**
+	 * Get the time when this thread should be woken up
+	 */
+	public long getWakeTime(){
+		return wakeTime;
+	}
 	/**
 	 * Allocate a new KThread.
 	 * 
@@ -448,6 +463,8 @@ public class KThread {
 	private Runnable target;
 
 	private TCB tcb;
+
+	private long wakeTime;
 
 	/**
 	 * Unique identifer for this thread. Used to deterministically compare
