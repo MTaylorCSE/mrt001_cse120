@@ -1,12 +1,14 @@
 package nachos.threads;
 
 import nachos.machine.*;
-
+import java.util.*;
 /**
  * Uses the hardware timer to provide preemption, and to allow threads to sleep
  * until a certain time.
  */
 public class Alarm {
+
+	private static HashMap<Long,KThread> waitQueue;
 	/**
 	 * Allocate a new Alarm. Set the machine's timer interrupt handler to this
 	 * alarm's callback.
