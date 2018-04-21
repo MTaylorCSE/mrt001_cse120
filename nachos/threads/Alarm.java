@@ -74,6 +74,10 @@ public class Alarm {
 
 
 	/* Testing Code */
+
+    /**
+     * Test whether the threads waits for approximately the time that was requested
+     */
 	public static void alarmTest1() {
 	    int durations[] = {1000, 10*1000, 100*1000};
 	    long t0, t1;
@@ -82,17 +86,35 @@ public class Alarm {
 	        t0 = Machine.timer().getTime();
 	        ThreadedKernel.alarm.waitUntil (d);
 	        t1 = Machine.timer().getTime();
+
 	        System.out.println ("alarmTest1: waited for " + (t1 - t0) + "ticks");
         }
     }
 
-    //Implement more test methods here ...
+	/**
+	 * Test if thread does not wait when wait parameter is negative
+	 */
+	public static void alarmTest2() {
+		long t0, t1;
 
-    // Invoke Alarm.selfTest() from ThreadedKernel.selfTest()
+		for(int i = -10; i < 1 ; ++i){
+			t0 = Machine.timer().getTime();
+			ThreadedKernel.alarm.waitUntil(i);
+			t1 = Machine.timer().getTime();
+
+			// we are told timer interrupts around 500 ticks so anything less than
+			// 600 means the machine did not wait
+			if( (t1-t0) < 600) {
+				System.out.println("alarmTest2: dope machine did not wait" );
+			}
+		}
+	}
+
+
+	// Invoke Alarm.selfTest() from ThreadedKernel.selfTest()
     public static void selfTest() {
 	    alarmTest1();
-
-	    //Invoke your other test methods here ...
+	    alarmTest2();
     }
 
 	// private class created to define thread time objects that can be placed and sorted in queue
