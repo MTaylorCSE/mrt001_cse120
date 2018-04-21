@@ -285,6 +285,16 @@ public class KThread {
 
 		Lib.assertTrue(this != currentThread);
 
+		boolean intStatus = Machine.interrupt().disable();
+
+		//Thread already finished
+		if( this.status == statusFinished) return;
+
+		currentThread.sleep();
+
+		this.finish();
+
+		Machine.interrupt().restore(intStatus);
 	}
 
 	/**
@@ -415,7 +425,57 @@ public class KThread {
 
 		new KThread(new PingTest(1)).setName("forked thread").fork();
 		new PingTest(0).run();
+		joinTest1();
+		joinTest2();
 	}
+
+
+	// Place Join test code in the KThread class and invoke test methods
+	// from KThread.selfTest().
+
+	// Simple test for the situation where the child finishes before
+	// the parent calls join on it.
+
+	private static void joinTest1 () {
+		KThread child1 = new KThread( new Runnable () {
+			public void run() {
+				System.out.println("I (heart) Nachos!");
+			}
+		});
+		child1.setName("child1").fork();
+
+		// We want the child to finish before we call join.  Although
+		// our solutions to the problems cannot busy wait, our test
+		// programs can!
+
+		for (int i = 0; i < 5; i++) {
+			System.out.println ("busy...");
+			KThread.currentThread().yield();
+		}
+
+		child1.join();
+		System.out.println("After joining, child1 should be finished.");
+		System.out.println("is it? " + (child1.status == statusFinished));
+		Lib.assertTrue((child1.status == statusFinished), " Expected child1 to be finished.");
+	}
+
+	/**
+	 * Tests that verifies if a parent calls join on a child and the child is still executing,
+	 * the parent waits
+	 */
+	private static void joinTest2 () {
+		System.out.println("Parent has started running");
+		KThread child1 = new KThread( new Runnable () {
+			public void run() {
+				System.out.println("Child is now running");
+			}
+		});
+
+		child1.setName("child1").fork();
+		child1.join();
+		Lib.assertTrue((child1.status == statusFinished), "Parent waited for child to finish" );
+	}
+
 
 	private static final char dbgThread = 't';
 
