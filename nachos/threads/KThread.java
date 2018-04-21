@@ -465,6 +465,7 @@ public class KThread {
 	 */
 	private static void joinTest2 () {
 		System.out.println("Parent has started running");
+
 		KThread child1 = new KThread( new Runnable () {
 			public void run() {
 				System.out.println("Child is now running");
@@ -473,7 +474,8 @@ public class KThread {
 
 		child1.setName("child1").fork();
 		child1.join();
-		Lib.assertTrue((child1.status == statusFinished), "Parent waited for child to finish" );
+		System.out.println("Bitch");
+		Lib.assertTrue((child1.status == statusFinished), "Child did not finish" );
 	}
 
 
