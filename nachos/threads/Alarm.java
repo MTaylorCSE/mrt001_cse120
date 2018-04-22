@@ -31,13 +31,14 @@ public class Alarm {
 	 * should be run.
 	 */
 	public void timerInterrupt() {
-//		long curWakeTime = Machine.timer().getTime();
 		boolean intStatus = Machine.interrupt().disable();
+
+		long curMachineTime = Machine.timer().getTime();
 			ListIterator<KThread> queueIterator = waitQueue.listIterator();
 			while (queueIterator.hasNext()) {
 				KThread current = queueIterator.next();
 				long curWakeTime = current.getWakeTime();
-				if (curWakeTime <= Machine.timer().getTime()) {
+				if (curWakeTime <= curMachineTime) {
 					current.ready();
 					queueIterator.remove();
 				}
@@ -69,7 +70,6 @@ public class Alarm {
 		waitQueue.add(KThread.currentThread());
 
 		KThread.sleep();
-		Machine.interrupt().restore(intStatus);
 	}
 	/**
 	 * Test whether the threads waits for approximately the time that was requested
