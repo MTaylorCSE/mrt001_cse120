@@ -34,6 +34,20 @@ public class Condition2 {
 
 		conditionLock.release();
 
+		boolean intStatus = Machine.interrupt().disable();
+		// Semaphore copycat code here
+
+		if (value == 0) {
+			waitQueue.waitForAccess(KThread.currentThread());
+			KThread.sleep();
+		}
+		else {
+			value--;
+		}
+
+		// End of semaphore copycat code
+		Machine.interrupt().restore(intStatus);
+
 		conditionLock.acquire();
 	}
 
@@ -54,4 +68,9 @@ public class Condition2 {
 	}
 
 	private Lock conditionLock;
+
+	private ThreadQueue waitQueue = ThreadedKernel.scheduler
+			.newThreadQueue(false);
+
+	private int value;
 }
