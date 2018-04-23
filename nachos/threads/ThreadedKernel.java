@@ -51,6 +51,10 @@ public class ThreadedKernel extends Kernel {
 		SynchList.selfTest();
 		Alarm.selfTest();
 		Condition2.selfTest();
+		System.out.println("Running test on original! Confirm is the same as Condition2");
+		Condition.cvTest5();
+		System.out.println("Running test on Condition2");
+		Condition2.cvTest5();
 		if (Machine.bank() != null) {
 			ElevatorBank.selfTest();
 		}
