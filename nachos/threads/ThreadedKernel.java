@@ -55,6 +55,9 @@ public class ThreadedKernel extends Kernel {
 		Condition.cvTest5();
 		System.out.println("Running test on Condition2");
 		Condition2.cvTest5();
+
+		GameMatch.selfTest();
+
 		if (Machine.bank() != null) {
 			ElevatorBank.selfTest();
 		}

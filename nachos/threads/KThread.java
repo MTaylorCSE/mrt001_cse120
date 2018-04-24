@@ -301,8 +301,9 @@ public class KThread {
 		Lib.debug(dbgThread, "Joining to thread: " + toString());
 
 		Lib.assertTrue(this != currentThread);
-		Lib.assertTrue( this.toBeResumed == null);
+
 		boolean intStatus = Machine.interrupt().disable();
+		Lib.assertTrue( this.toBeResumed == null);
 		if(this.status != statusFinished){
 			this.toBeResumed = currentThread;
 			currentThread.sleep();
