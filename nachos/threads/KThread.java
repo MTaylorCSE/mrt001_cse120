@@ -444,6 +444,7 @@ public class KThread {
 		//joinTest3();
 		//joinTest4();
 		joinTest5();
+		joinTest6();
 	}
 
 	private static final char dbgThread = 't';
@@ -629,10 +630,51 @@ public class KThread {
 	}
 
 	/**
-	 * Test if independent paris of parent/child threads can join with each other
+	 * Test if independent pairs of parent/child threads can join with each other
 	 * without interference
 	 */
 	public static void joinTest6 () {
-		
+
+		KThread parent1 = new KThread(new Runnable() {
+
+			KThread child1 = new KThread(new Runnable() {
+				@Override
+				public void run() {
+					System.out.println(KThread.currentThread().getName() + " child1 has been forked");
+					//child starts but does not finish running
+					for (int i = 0; i < 5; i++) {
+						System.out.println ("busy... " + KThread.currentThread().getName() + " child2 is running");
+						KThread.currentThread().yield();
+					}
+				}
+			});
+
+			KThread child2 = new KThread(new Runnable() {
+
+				@Override
+				public void run() {
+					System.out.println( KThread.currentThread().getName() + " has been forked");
+					//child starts but does not finish running
+					for (int i = 0; i < 5; i++) {
+						System.out.println ("busy ... " + KThread.currentThread().getName() + " is running");
+						KThread.currentThread().yield();
+					}
+				}
+			});
+
+			@Override
+			public void run() {
+				child1.setName("child1").fork();
+				child2.setName("child2").fork();
+				child1.join();
+				child2.join();
+				System.out.println("Parent 1 Done");
+			}
+		});
+
+		parent1.setName("parent1").fork();
+		parent1.join();
+		System.out.println("Parent 0 done");
+
 	}
 }
