@@ -20,6 +20,10 @@ threads =	ThreadedKernel KThread Alarm \
 		Scheduler ThreadQueue RoundRobinScheduler \
 		Semaphore Lock Condition SynchList \
 		Condition2 Communicator Rider ElevatorController \
+<<<<<<< HEAD
+		GameMatch \
+=======
+>>>>>>> proj1
 		PriorityScheduler LotteryScheduler Boat
 
 userprog =	UserKernel UThread UserProcess SynchConsole

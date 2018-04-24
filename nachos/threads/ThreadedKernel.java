@@ -50,6 +50,14 @@ public class ThreadedKernel extends Kernel {
 		Semaphore.selfTest();
 		SynchList.selfTest();
 		Alarm.selfTest();
+		Condition2.selfTest();
+		System.out.println("Running test on original! Confirm is the same as Condition2");
+		Condition.cvTest5();
+		System.out.println("Running test on Condition2");
+		Condition2.cvTest5();
+
+		GameMatch.selfTest();
+
 		if (Machine.bank() != null) {
 			ElevatorBank.selfTest();
 		}
@@ -92,4 +100,6 @@ public class ThreadedKernel extends Kernel {
 	private static Rider dummy6 = null;
 
 	private static ElevatorController dummy7 = null;
+
+        private static GameMatch dummu8 = null;
 }
