@@ -5,16 +5,16 @@ import nachos.machine.*;
 /**
  * A KThread is a thread that can be used to execute Nachos kernel code. Nachos
  * allows multiple threads to run concurrently.
- * 
+ *
  * To create a new thread of execution, first declare a class that implements
  * the <tt>Runnable</tt> interface. That class then implements the <tt>run</tt>
  * method. An instance of the class can then be allocated, passed as an argument
  * when creating <tt>KThread</tt>, and forked. For example, a thread that
  * computes pi could be written as follows:
- * 
+ *
  * <p>
  * <blockquote>
- * 
+ *
  * <pre>
  * class PiRun implements Runnable {
  * 	public void run() {
@@ -23,25 +23,25 @@ import nachos.machine.*;
  *     }
  * }
  * </pre>
- * 
+ *
  * </blockquote>
  * <p>
  * The following code would then create a thread and start it running:
- * 
+ *
  * <p>
  * <blockquote>
- * 
+ *
  * <pre>
  * PiRun p = new PiRun();
  * new KThread(p).fork();
  * </pre>
- * 
+ *
  * </blockquote>
  */
 public class KThread {
 	/**
 	 * Get the current thread.
-	 * 
+	 *
 	 * @return the current thread.
 	 */
 	public static KThread currentThread() {
@@ -56,6 +56,7 @@ public class KThread {
 	public KThread() {
 		if (currentThread != null) {
 			tcb = new TCB();
+			wakeTime = 0;
 		}
 		else {
 			readyQueue = ThreadedKernel.scheduler.newThreadQueue(false);
@@ -71,8 +72,22 @@ public class KThread {
 	}
 
 	/**
+	 * Set the time when this thread should be woken up
+	 * @param time
+	 */
+	public void setWakeTime(long time){
+		wakeTime = time;
+	}
+
+	/**
+	 * Get the time when this thread should be woken up
+	 */
+	public long getWakeTime(){
+		return wakeTime;
+	}
+	/**
 	 * Allocate a new KThread.
-	 * 
+	 *
 	 * @param target the object whose <tt>run</tt> method is called.
 	 */
 	public KThread(Runnable target) {
@@ -82,7 +97,7 @@ public class KThread {
 
 	/**
 	 * Set the target of this thread.
-	 * 
+	 *
 	 * @param target the object whose <tt>run</tt> method is called.
 	 * @return this thread.
 	 */
@@ -96,7 +111,7 @@ public class KThread {
 	/**
 	 * Set the name of this thread. This name is used for debugging purposes
 	 * only.
-	 * 
+	 *
 	 * @param name the name to give to this thread.
 	 * @return this thread.
 	 */
@@ -108,7 +123,7 @@ public class KThread {
 	/**
 	 * Get the name of this thread. This name is used for debugging purposes
 	 * only.
-	 * 
+	 *
 	 * @return the name given to this thread.
 	 */
 	public String getName() {
@@ -118,7 +133,7 @@ public class KThread {
 	/**
 	 * Get the full name of this thread. This includes its name along with its
 	 * numerical ID. This name is used for debugging purposes only.
-	 * 
+	 *
 	 * @return the full name given to this thread.
 	 */
 	public String toString() {
@@ -185,7 +200,7 @@ public class KThread {
 	 * Finish the current thread and schedule it to be destroyed when it is safe
 	 * to do so. This method is automatically called when a thread's
 	 * <tt>run</tt> method returns, but it may also be called directly.
-	 * 
+	 *
 	 * The current thread cannot be immediately destroyed because its stack and
 	 * other execution state are still in use. Instead, this thread will be
 	 * destroyed automatically by the next thread to run, when it is safe to
@@ -212,12 +227,12 @@ public class KThread {
 	 * Relinquish the CPU if any other thread is ready to run. If so, put the
 	 * current thread on the ready queue, so that it will eventually be
 	 * rescheuled.
-	 * 
+	 *
 	 * <p>
 	 * Returns immediately if no other thread is ready to run. Otherwise returns
 	 * when the current thread is chosen to run again by
 	 * <tt>readyQueue.nextThread()</tt>.
-	 * 
+	 *
 	 * <p>
 	 * Interrupts are disabled, so that the current thread can atomically add
 	 * itself to the ready queue and switch to the next thread. On return,
@@ -241,7 +256,7 @@ public class KThread {
 	/**
 	 * Relinquish the CPU, because the current thread has either finished or it
 	 * is blocked. This thread must be the current thread.
-	 * 
+	 *
 	 * <p>
 	 * If the current thread is blocked (on a synchronization primitive, i.e. a
 	 * <tt>Semaphore</tt>, <tt>Lock</tt>, or <tt>Condition</tt>), eventually
@@ -286,8 +301,8 @@ public class KThread {
 		Lib.debug(dbgThread, "Joining to thread: " + toString());
 
 		Lib.assertTrue(this != currentThread);
-		Lib.assertTrue( this.toBeResumed == null);
 		boolean intStatus = Machine.interrupt().disable();
+		Lib.assertTrue( this.toBeResumed == null);
 		if(this.status != statusFinished){
 			this.toBeResumed = currentThread;
 			currentThread.sleep();
@@ -301,7 +316,7 @@ public class KThread {
 	 * and <tt>runNextThread()</tt> is called, it will run the idle thread. The
 	 * idle thread must never block, and it will only be allowed to run when all
 	 * other threads are blocked.
-	 * 
+	 *
 	 * <p>
 	 * Note that <tt>ready()</tt> never adds the idle thread to the ready set.
 	 */
@@ -338,17 +353,17 @@ public class KThread {
 	 * switch to the new thread by calling <tt>TCB.contextSwitch()</tt>, and
 	 * load the state of the new thread. The new thread becomes the current
 	 * thread.
-	 * 
+	 *
 	 * <p>
 	 * If the new thread and the old thread are the same, this method must still
 	 * call <tt>saveState()</tt>, <tt>contextSwitch()</tt>, and
 	 * <tt>restoreState()</tt>.
-	 * 
+	 *
 	 * <p>
 	 * The state of the previously running thread must already have been changed
 	 * from running to blocked or ready (depending on whether the thread is
 	 * sleeping or yielding).
-	 * 
+	 *
 	 * @param finishing <tt>true</tt> if the current thread is finished, and
 	 * should be destroyed by the new thread.
 	 */
@@ -426,13 +441,17 @@ public class KThread {
 		new PingTest(0).run();
 		joinTest1();
 		joinTest2();
+		//joinTest3();
+		//joinTest4();
+		joinTest5();
+		joinTest6();
 	}
 
 	private static final char dbgThread = 't';
 
 	/**
 	 * Additional state used by schedulers.
-	 * 
+	 *
 	 * @see nachos.threads.PriorityScheduler.ThreadState
 	 */
 	public Object schedulingState = null;
@@ -459,6 +478,8 @@ public class KThread {
 	private Runnable target;
 
 	private TCB tcb;
+
+	private long wakeTime;
 
 	/**
 	 * Unique identifer for this thread. Used to deterministically compare
@@ -512,16 +533,148 @@ public class KThread {
 	 * the parent waits
 	 */
 	private static void joinTest2 () {
-		System.out.println("Parent has started running");
-		KThread child1 = new KThread( new Runnable () {
+		KThread child = new KThread( new Runnable () {
+
 			public void run() {
-				System.out.println("Child is now running");
+				System.out.println("child1 has been forked");
+				//child starts but does not finish running
+				for (int i = 0; i < 10; i++) {
+					System.out.println ("busy... child is running");
+					KThread.currentThread().yield();
+				}
+			}
+		});
+
+		child.setName("child").fork();
+		System.out.println("Parent is running and about to call join ...");
+		child.join();
+		System.out.println("After joining, child1 should be finished.");
+		System.out.println("is it? " + (child.status == statusFinished));
+		Lib.assertTrue((child.status == statusFinished), " Expected child1 to be finished.");
+	}
+
+	/**
+	 * Tests that Nachos asserts if thread calls join on itself
+	 */
+	private static void joinTest3 () {
+		KThread.currentThread().join();
+	}
+
+	/**
+	 * Test that Nachos asserts if join is called more than once on a thread
+	 */
+	private static void joinTest4 () {
+
+		KThread child = new KThread( new Runnable () {
+
+			public void run() {
+				System.out.println("child1 has been forked");
+				//child starts but does not finish running
+				for (int i = 0; i < 3; i++) {
+					System.out.println ("busy... child is running");
+					KThread.currentThread().yield();
+				}
+			}
+		});
+
+		child.setName("child").fork();
+		System.out.println("Parent is running and about to call join ...");
+		//test starts here
+		child.join();
+		child.join();
+		child.join();
+		//these lines should not be executed
+		System.out.println("After joining, child1 should be finished.");
+		System.out.println("is it? " + (child.status == statusFinished));
+		Lib.assertTrue((child.status == statusFinished), " Expected child1 to be finished.");
+	}
+
+	/**
+	 * Tests if whether one parent thread can join with multiple child threads
+	 * in succession
+	 */
+	public static void joinTest5 () {
+		KThread child1 = new KThread( new Runnable () {
+
+			public void run() {
+				System.out.println("child1 has been forked");
+				//child starts but does not finish running
+				for (int i = 0; i < 3; i++) {
+					System.out.println ("busy... child1 is running");
+					KThread.currentThread().yield();
+				}
+			}
+		});
+		KThread child2 = new KThread( new Runnable () {
+
+			public void run() {
+				System.out.println("child1 has been forked");
+				//child starts but does not finish running
+				for (int i = 0; i < 3; i++) {
+					System.out.println ("busy... child2 is running");
+					KThread.currentThread().yield();
+				}
 			}
 		});
 
 		child1.setName("child1").fork();
+		child2.setName("child2").fork();
+		System.out.println("Parent is running and about to call join ...");
+		//test starts here
 		child1.join();
-		System.out.println("This should print after 'Child is now...'");
-		Lib.assertTrue((child1.status == statusFinished), "Parent waited for child to finish" );
+		child2.join();
+		//these lines should not be executed
+		System.out.println("After joining, child1 and child2 should be finished.");
+		System.out.println("Are they? " + ((child1.status == statusFinished) && (child2.status == statusFinished)));
+		Lib.assertTrue(((child1.status == statusFinished) && (child2.status == statusFinished)), " Expected child1 to be finished.");
+	}
+
+	/**
+	 * Test if independent pairs of parent/child threads can join with each other
+	 * without interference
+	 */
+	public static void joinTest6 () {
+
+		KThread parent1 = new KThread(new Runnable() {
+
+			KThread child1 = new KThread(new Runnable() {
+				@Override
+				public void run() {
+					System.out.println(KThread.currentThread().getName() + " child1 has been forked");
+					//child starts but does not finish running
+					for (int i = 0; i < 5; i++) {
+						System.out.println ("busy... " + KThread.currentThread().getName() + " child2 is running");
+						KThread.currentThread().yield();
+					}
+				}
+			});
+
+			KThread child2 = new KThread(new Runnable() {
+
+				@Override
+				public void run() {
+					System.out.println( KThread.currentThread().getName() + " has been forked");
+					//child starts but does not finish running
+					for (int i = 0; i < 5; i++) {
+						System.out.println ("busy ... " + KThread.currentThread().getName() + " is running");
+						KThread.currentThread().yield();
+					}
+				}
+			});
+
+			@Override
+			public void run() {
+				child1.setName("child1").fork();
+				child2.setName("child2").fork();
+				child1.join();
+				child2.join();
+				System.out.println("Parent 1 Done");
+			}
+		});
+
+		parent1.setName("parent1").fork();
+		parent1.join();
+		System.out.println("Parent 0 done");
+
 	}
 }
