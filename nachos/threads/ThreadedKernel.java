@@ -50,6 +50,9 @@ public class ThreadedKernel extends Kernel {
 		Semaphore.selfTest();
 		SynchList.selfTest();
 		Alarm.selfTest();
+
+//		Condition.selfTest();
+
 		Condition2.selfTest();
 		System.out.println("Running test on original! Confirm is the same as Condition2");
 		Condition.cvTest5();

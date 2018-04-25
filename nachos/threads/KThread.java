@@ -453,11 +453,12 @@ public class KThread {
 		new PingTest(0).run();
 		joinTest1();
 		joinTest2();
-		//joinTest3();
+//		joinTest3();
 		//joinTest4();
 		System.out.println("==================TEST 5=====================");
 		joinTest5();
 		joinTest6();
+		joinTest7();
 	}
 
 	private static final char dbgThread = 't';
@@ -687,5 +688,16 @@ public class KThread {
 		});
 
 		threadC.fork();
+
+	}
+
+	public static void joinTest7(){
+		KThread tester = new KThread(new Runnable(){
+			public void run(){
+				System.out.println("This test succeeded");
+			}
+		});
+		tester.setName("tester").fork();
+		tester.join();
 	}
 }

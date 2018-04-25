@@ -33,14 +33,12 @@ public class Condition2 {
 	 */
 	public void sleep() {
 
-		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
-
 		boolean intStatus = Machine.interrupt().disable();
+
 		conditionLock.release();
-		// Semaphore copycat code here
 		waitQueue.add(KThread.currentThread());
         KThread.sleep();
-		// End of semaphore copycat code
+
 		conditionLock.acquire();
 		Machine.interrupt().restore(intStatus);
 	}
@@ -53,13 +51,13 @@ public class Condition2 {
 
 		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
 
+		boolean intStatus = Machine.interrupt().disable();
 		if(!waitQueue.isEmpty()){
-			boolean intStatus = Machine.interrupt().disable();
 
 			waitQueue.removeFirst().ready();
 
-			Machine.interrupt().restore(intStatus);
 		}
+		Machine.interrupt().restore(intStatus);
 	}
 
 	/**
@@ -68,8 +66,11 @@ public class Condition2 {
 	 */
 	public void wakeAll() {
 		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+
+		boolean intStatus = Machine.interrupt().disable();
 		while(!waitQueue.isEmpty())
 			wake();
+		Machine.interrupt().restore(intStatus);
 	}
 
 	private Lock conditionLock;
