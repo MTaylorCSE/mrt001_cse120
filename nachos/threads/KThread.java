@@ -217,9 +217,16 @@ public class KThread {
 		toBeDestroyed = currentThread;
 
 		currentThread.status = statusFinished;
-		if(currentThread.toBeResumed != null){
-			currentThread.toBeResumed.ready();
+
+		//Now that this thread is finish we could give access to return from join
+		KThread waiter = KThread.currentThread().threadInsideJoin.nextThread();
+
+		//catch null pointer
+		if(waiter != null) {
+			//unblock thread
+			waiter.ready();
 		}
+
 		sleep();
 	}
 
@@ -301,10 +308,17 @@ public class KThread {
 		Lib.debug(dbgThread, "Joining to thread: " + toString());
 
 		Lib.assertTrue(this != currentThread);
+
+		//join can be called on a thread at most once.
+		Lib.assertTrue(joinedCalled == 0);
+
 		boolean intStatus = Machine.interrupt().disable();
-		Lib.assertTrue( this.toBeResumed == null);
+
+		joinedCalled = 1;
+
 		if(this.status != statusFinished){
-			this.toBeResumed = currentThread;
+			//caller to join is now waiting to return
+			threadInsideJoin.waitForAccess(KThread.currentThread());
 			currentThread.sleep();
 		}
 		Machine.interrupt().restore(intStatus);
@@ -443,6 +457,7 @@ public class KThread {
 		joinTest2();
 		//joinTest3();
 		//joinTest4();
+		System.out.println("==================TEST 5=====================");
 		joinTest5();
 		joinTest6();
 	}
@@ -496,9 +511,14 @@ public class KThread {
 
 	private static KThread toBeDestroyed = null;
 
-	private KThread toBeResumed = null;
-
 	private static KThread idleThread = null;
+
+	// Create scheduler to limit access, specifically the right for a thread to return from join
+	private ThreadQueue threadInsideJoin = ThreadedKernel.scheduler.newThreadQueue(true);
+
+	//determines whether join was already called
+	private int joinedCalled = 0;
+
 	// Place Join test code in the KThread class and invoke test methods
 	// from KThread.selfTest().
 
@@ -608,7 +628,7 @@ public class KThread {
 		KThread child2 = new KThread( new Runnable () {
 
 			public void run() {
-				System.out.println("child1 has been forked");
+				System.out.println("child2 has been forked");
 				//child starts but does not finish running
 				for (int i = 0; i < 3; i++) {
 					System.out.println ("busy... child2 is running");
@@ -635,46 +655,39 @@ public class KThread {
 	 */
 	public static void joinTest6 () {
 
-		KThread parent1 = new KThread(new Runnable() {
+		//Thread A is the running process
 
-			KThread child1 = new KThread(new Runnable() {
-				@Override
-				public void run() {
-					System.out.println(KThread.currentThread().getName() + " child1 has been forked");
-					//child starts but does not finish running
-					for (int i = 0; i < 5; i++) {
-						System.out.println ("busy... " + KThread.currentThread().getName() + " child2 is running");
-						KThread.currentThread().yield();
-					}
-				}
-			});
-
-			KThread child2 = new KThread(new Runnable() {
-
-				@Override
-				public void run() {
-					System.out.println( KThread.currentThread().getName() + " has been forked");
-					//child starts but does not finish running
-					for (int i = 0; i < 5; i++) {
-						System.out.println ("busy ... " + KThread.currentThread().getName() + " is running");
-						KThread.currentThread().yield();
-					}
-				}
-			});
-
+		KThread threadB = new KThread(new Runnable() {
 			@Override
 			public void run() {
-				child1.setName("child1").fork();
-				child2.setName("child2").fork();
-				child1.join();
-				child2.join();
-				System.out.println("Parent 1 Done");
+				//make thread B busy wait
+				for (int i = 0; i < 10; i++) {
+					System.out.println ("busy... Thread B is running");
+					KThread.currentThread().yield();
+				}
+			}
+		});
+		System.out.println("============Test 6 Begins Thread A Init=======================");
+		//fork B from A
+		threadB.fork();
+		//call method that forks Thread C
+		joinTest6Helper(threadB);
+	}
+
+	/**
+	 * Method that takes in KThread reference, starts a Thread and then join with the reference
+	 */
+	public static void joinTest6Helper(KThread joinable) {
+
+		KThread threadC = new KThread(new Runnable() {
+			@Override
+			public void run() {
+				System.out.println("Thread C will now attempt to join Thread B");
+				joinable.join();
+				System.out.println("Did Thread B Finish?: " + (joinable.status == statusFinished));
 			}
 		});
 
-		parent1.setName("parent1").fork();
-		parent1.join();
-		System.out.println("Parent 0 done");
-
+		threadC.fork();
 	}
 }
