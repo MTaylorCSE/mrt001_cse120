@@ -32,18 +32,17 @@ public class Condition2 {
 	 * reacquire the lock before <tt>sleep()</tt> returns.
 	 */
 	public void sleep() {
+
 		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
 
-		conditionLock.release();
-
 		boolean intStatus = Machine.interrupt().disable();
+		conditionLock.release();
 		// Semaphore copycat code here
 		waitQueue.add(KThread.currentThread());
         KThread.sleep();
 		// End of semaphore copycat code
-		Machine.interrupt().restore(intStatus);
-
 		conditionLock.acquire();
+		Machine.interrupt().restore(intStatus);
 	}
 
 	/**
@@ -51,6 +50,7 @@ public class Condition2 {
 	 * current thread must hold the associated lock.
 	 */
 	public void wake() {
+
 		Lib.assertTrue(conditionLock.isHeldByCurrentThread());
 
 		if(!waitQueue.isEmpty()){

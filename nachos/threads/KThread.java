@@ -313,9 +313,7 @@ public class KThread {
 		Lib.assertTrue(joinedCalled == 0);
 
 		boolean intStatus = Machine.interrupt().disable();
-
 		joinedCalled = 1;
-
 		if(this.status != statusFinished){
 			//caller to join is now waiting to return
 			threadInsideJoin.waitForAccess(KThread.currentThread());
