@@ -441,10 +441,11 @@ public class KThread {
 		new PingTest(0).run();
 		joinTest1();
 		joinTest2();
-		//joinTest3();
+//		joinTest3();
 		//joinTest4();
 		joinTest5();
 		joinTest6();
+		joinTest7();
 	}
 
 	private static final char dbgThread = 't';
@@ -676,5 +677,19 @@ public class KThread {
 		parent1.join();
 		System.out.println("Parent 0 done");
 
+		System.out.println("After joining, parent1 should be finished.");
+		System.out.println("is it? " + (parent1.status == statusFinished));
+		Lib.assertTrue((parent1.status == statusFinished), " Expected child1 to be finished.");
+
+	}
+
+	public static void joinTest7(){
+		KThread tester = new KThread(new Runnable(){
+			public void run(){
+				System.out.println("This test succeeded");
+			}
+		});
+		tester.setName("tester").fork();
+		tester.join();
 	}
 }

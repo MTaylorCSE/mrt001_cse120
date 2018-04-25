@@ -23,16 +23,21 @@ public class GameMatch {
     // Conditions and locks to hold players for each match type
     Condition beginnerMatch,
         intermediateMatch,
-        expertMatch;
+        expertMatch,
+        fallthroughCondition;
 
-    Lock beginnerLock,
-        intermediateLock,
-        expertLock;
+    Lock playLock;
 
     // Holds number of player threads waiting in respective Conditions
     private int numBeginners,
         numIntermediates,
-        numExperts;
+        numExperts,
+        matchNum,
+        beginnerMatchNum,
+        intermediateMatchNum,
+        expertMatchNum;
+
+    private boolean fallthrough;
 
     /**
      * Allocate a new GameMatch specifying the number of player
@@ -40,22 +45,30 @@ public class GameMatch {
      * implementation may assume this number is always greater than zero.
      */
     public GameMatch (int numPlayersInMatch) {
+
         matchSize = numPlayersInMatch;
 
-        beginnerLock = new Lock();
-        beginnerMatch = new Condition(beginnerLock);
+        playLock = new Lock();
 
-        intermediateLock = new Lock();
-        intermediateMatch = new Condition(intermediateLock);
 
-        expertLock = new Lock();
-        expertMatch = new Condition(expertLock);
+        beginnerMatch = new Condition(playLock);
+
+        intermediateMatch = new Condition(playLock);
+
+        expertMatch = new Condition(playLock);
 
         numBeginners = 0;
         numIntermediates = 0;
         numExperts = 0;
 
+        matchNum = 1;
 
+        beginnerMatchNum = -2;
+        expertMatchNum = -2;
+        intermediateMatchNum = -2;
+
+        fallthrough = false;
+        fallthroughCondition = new Condition(playLock);
     }
 
     /**
@@ -75,49 +88,72 @@ public class GameMatch {
      * or abilityExpert; return -1 otherwise.
      */
     public int play (int ability) {
+
+        playLock.acquire();
+        while(fallthrough){ fallthroughCondition.sleep();}
+
         switch(ability){
             case(abilityBeginner):
-                beginnerLock.acquire();
                 numBeginners++;
                 if(numBeginners == matchSize) {
-                    numBeginners = 0;
+                    beginnerMatchNum = matchNum;
+                    matchNum++;
+                    fallthrough = true;
                     beginnerMatch.wakeAll();
                 } else {
                     beginnerMatch.sleep();
                 }
-
-                beginnerLock.release();
-                return 0;
+                numBeginners--;
+                if(numBeginners == 0){
+                    fallthrough = false;
+                    fallthroughCondition.wakeAll();
+                }
+                return unlockAndReturn(playLock,beginnerMatchNum);
 
             case(abilityIntermediate):
-                intermediateLock.acquire();
                 numIntermediates++;
                 if(numIntermediates == matchSize){
-                    numIntermediates = 0;
+                    intermediateMatchNum = matchNum;
+                    matchNum++;
+                    fallthrough = true;
                     intermediateMatch.wakeAll();
                 } else {
                     intermediateMatch.sleep();
                 }
-
-                intermediateLock.release();
-                return 0;
+                numIntermediates--;
+                if(numIntermediates == 0){
+                    fallthrough = false;
+                    fallthroughCondition.wakeAll();
+                }
+                return unlockAndReturn(playLock,intermediateMatchNum);
 
             case(abilityExpert):
-                expertLock.acquire();
                 numExperts++;
                 if(numExperts == matchSize){
-                    numExperts = 0;
+                    expertMatchNum = matchNum;
+                    matchNum++;
+                    fallthrough = true;
                     expertMatch.wakeAll();
                 } else {
                     expertMatch.sleep();
                 }
+                numExperts--;
+                if(numExperts == 0){
+                    fallthrough = false;
+                    fallthroughCondition.wakeAll();
+                }
 
-                expertLock.release();
-                return 0;
+                return unlockAndReturn(playLock,expertMatchNum);
 
             default:
+                playLock.release();
                 return -1;
         }
+    }
+
+    private int unlockAndReturn(Lock cvLock,int value){
+        cvLock.release();
+        return value;
     }
 
     /**
@@ -128,6 +164,7 @@ public class GameMatch {
 //        playTestBeginnerMatch();
         playTestBeginnerMatch2();
         playTestIntermediateMatch2();
+        matchTest4();
     }
     /**
      * Test method for the fail case of play()
@@ -149,46 +186,10 @@ public class GameMatch {
     }
 
     /**
-     * Deprecated test case for making a beginner match. playTestBeginnerMatch2 can be quickly modified
-     * to alter the number of players in the match
-     */
-//    public static void playTestBeginnerMatch(){
-//        GameMatch game = new GameMatch(3);
-//        System.out.println("Test: playTestBeginnerMatch\n" +
-//            "Verify that all players are in the same match, and that all players have queued before any player joins\n"+
-//            "Note that the order in which players join is not guaranteed");
-//        KThread player1 = new KThread(new Runnable(){
-//            public void run(){
-//                System.out.println("Player 1 entering queue");
-//                System.out.println("Player 1 joining game " + game.play(abilityBeginner));
-//            }
-//        });
-//        KThread player2 = new KThread(new Runnable(){
-//            public void run(){
-//                System.out.println("Player 2 entering queue");
-//                System.out.println("Player 2 joining game " + game.play(abilityBeginner));
-//            }
-//        });
-//
-//        KThread player3 = new KThread(new Runnable(){
-//            public void run(){
-//                System.out.println("Player 3 entering queue");
-//                System.out.println("Player 3 joining game " + game.play(abilityBeginner));
-//            }
-//        });
-//        player1.setName("player1").fork();
-//        player2.setName("player2").fork();
-//        player3.setName("player3").fork();
-//        player1.join();
-//        player2.join();
-//        player3.join();
-//    }
-
-    /**
      * Tests that beginner matches are set up correctly
      */
     public static void playTestBeginnerMatch2() {
-        int numPlayers = 200;
+        int numPlayers = 3;
         GameMatch game = new GameMatch(numPlayers);
         System.out.println("Test: playTestBeginnerMatch\n" +
                 "Verify that all players are in the same match, and that all players have queued before any player joins\n" +
@@ -216,13 +217,14 @@ public class GameMatch {
      * Tests that intermediate matches are set up correctly
      */
     public static void playTestIntermediateMatch2() {
-        int numPlayers = 200;
-        GameMatch game = new GameMatch(numPlayers);
+        int matchSize = 2;
+        int numPlayers = matchSize * 10;
+        GameMatch game = new GameMatch(matchSize);
         System.out.println("Test: playTestIntermediateMatch\n" +
                 "Verify that all players are in the same match, and that all players have queued before any player joins\n" +
                 "Note that the order in which players join is not guaranteed");
         LinkedList<KThread> players = new LinkedList<>();
-        for (int i = 0; i < numPlayers; i++) {
+        for (int i = 1; i < numPlayers + 1; i++) {
             int myNum = i;
             players.add(new KThread(new Runnable(){
                 public void run(){
@@ -234,9 +236,66 @@ public class GameMatch {
         for (int i = 0; i < players.size(); i++){
             players.get(i).fork();
         }
+//        players.get(1).join();
         for (int i = 0; i < players.size(); i++){
             players.get(i).join();
         }
+    }
+    // Place GameMatch test code inside of the GameMatch class.
 
+    public static void matchTest4 () {
+        final GameMatch match = new GameMatch(2);
+
+        // Instantiate the threads
+        KThread beg1 = new KThread( new Runnable () {
+            public void run() {
+                int r = match.play(GameMatch.abilityBeginner);
+                System.out.println ("beg1 matched");
+                // beginners should match with a match number of 1
+                Lib.assertTrue(r == 1, "expected match number of 1");
+            }
+        });
+        beg1.setName("B1");
+
+        KThread beg2 = new KThread( new Runnable () {
+            public void run() {
+                int r = match.play(GameMatch.abilityBeginner);
+                System.out.println ("beg2 matched");
+                // beginners should match with a match number of 1
+                Lib.assertTrue(r == 1, "expected match number of 1");
+            }
+        });
+        beg2.setName("B2");
+
+        KThread int1 = new KThread( new Runnable () {
+            public void run() {
+                int r = match.play(GameMatch.abilityIntermediate);
+                Lib.assertNotReached("int1 should not have matched!");
+            }
+        });
+        int1.setName("I1");
+
+        KThread exp1 = new KThread( new Runnable () {
+            public void run() {
+                int r = match.play(GameMatch.abilityExpert);
+                Lib.assertNotReached("exp1 should not have matched!");
+            }
+        });
+        exp1.setName("E1");
+
+        // Run the threads.  The beginner threads should successfully
+        // form a match, the other threads should not.  The outcome
+        // should be the same independent of the order in which threads
+        // are forked.
+        beg1.fork();
+        int1.fork();
+        exp1.fork();
+        beg2.fork();
+
+        // Assume join is not implemented, use yield to allow other
+        // threads to run
+        for (int i = 0; i < 10; i++) {
+            KThread.currentThread().yield();
+        }
     }
 }
