@@ -1,3 +1,3 @@
-DIRS = userprog threads machine security ag
+DRS = userprog threads machine security ag
 
 include ../Makefile
