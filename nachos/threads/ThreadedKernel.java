@@ -46,24 +46,24 @@ public class ThreadedKernel extends Kernel {
 	 * here.
 	 */
 	public void selfTest() {
-		KThread.selfTest();
-		Semaphore.selfTest();
-		SynchList.selfTest();
-		Alarm.selfTest();
-
+//		KThread.selfTest();
+//		Semaphore.selfTest();
+//		SynchList.selfTest();
+//		Alarm.selfTest();
+//
 //		Condition.selfTest();
-
-		Condition2.selfTest();
-		System.out.println("Running test on original! Confirm is the same as Condition2");
-		Condition.cvTest5();
-		System.out.println("Running test on Condition2");
-		Condition2.cvTest5();
-
-		GameMatch.selfTest();
-
-		if (Machine.bank() != null) {
-			ElevatorBank.selfTest();
-		}
+//
+//		Condition2.selfTest();
+//		System.out.println("Running test on original! Confirm is the same as Condition2");
+//		Condition.cvTest5();
+//		System.out.println("Running test on Condition2");
+//		Condition2.cvTest5();
+//
+//		GameMatch.selfTest();
+//
+//		if (Machine.bank() != null) {
+//			ElevatorBank.selfTest();
+//		}
 	}
 
 	/**

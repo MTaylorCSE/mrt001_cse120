@@ -6,6 +6,9 @@ import nachos.userprog.*;
 import nachos.vm.*;
 
 import java.io.EOFException;
+import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * Encapsulates the state of a user process that is not contained in its user
@@ -28,6 +31,15 @@ public class UserProcess {
 		pageTable = new TranslationEntry[numPhysPages];
 		for (int i = 0; i < numPhysPages; i++)
 			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+
+		fileTable = new OpenFile[16];
+		fileDescriptorQueue = new LinkedList<Integer>();
+		for(int i = 2; i < 16; i++){
+			fileDescriptorQueue.add(i);
+		}
+
+		fileTable[0] = UserKernel.console.openForReading();
+		fileTable[1] = UserKernel.console.openForWriting();
 	}
 
 	/**
@@ -369,6 +381,172 @@ public class UserProcess {
 		return 0;
 	}
 
+	/**
+	 * Handle the creat() system call
+	 * @param vaddrFileName the virtual address of the filename for the new file
+	 * @return
+	 */
+	private int handleCreat(int vaddrFileName){
+
+		if(vaddrFileName == 0x0){
+			return ERROR;
+		}
+
+		String filename = readVirtualMemoryString(vaddrFileName, 256);
+		if(filename == null){
+			return ERROR;
+		}
+
+		OpenFile newFile = ThreadedKernel.fileSystem.open(filename,true);
+
+		// If the file descriptor queue is empty, the max number of open files has been reached
+		if(newFile != null && fileDescriptorQueue.peek() != null){
+			int descriptor = fileDescriptorQueue.poll();
+			fileTable[descriptor] = newFile;
+			return descriptor;
+		}
+
+		return ERROR;
+	}
+
+	private int handleWrite(int descriptor, int vaddrReadBuffer, int maxBytesWritten){
+
+		if( vaddrReadBuffer == 0x0){
+			return ERROR;
+		}
+
+		if(descriptor < 0 || descriptor > 15 || fileTable[descriptor] == null){
+			return ERROR;
+		}
+
+		if(maxBytesWritten < 0) {
+			return ERROR;
+		}
+
+		byte[] writeBuffer = new byte[pageSize];
+		if(maxBytesWritten <= pageSize){
+
+			readVirtualMemory(vaddrReadBuffer, writeBuffer);
+			int bytesWritten = fileTable[descriptor].write(writeBuffer,0,maxBytesWritten);
+			if(bytesWritten != maxBytesWritten){
+				return ERROR;
+			}
+			return bytesWritten;
+
+		} else {
+			int bytesWrittenActual = 0;
+			int bytesWrittenExpected = 0;
+			int numBytesRetrieved = pageSize;
+			while( bytesWrittenExpected < maxBytesWritten) {
+				readVirtualMemory(vaddrReadBuffer,writeBuffer,0,numBytesRetrieved);
+				bytesWrittenExpected += numBytesRetrieved;
+				bytesWrittenActual += fileTable[descriptor].write(writeBuffer,0,numBytesRetrieved);
+				vaddrReadBuffer += numBytesRetrieved;
+				if(maxBytesWritten - bytesWrittenExpected < pageSize){
+					numBytesRetrieved = maxBytesWritten - bytesWrittenExpected;
+				}
+			}
+			if(bytesWrittenActual != maxBytesWritten){
+				return ERROR;
+			}
+			return bytesWrittenActual;
+		}
+
+
+	}
+
+	/**
+	 * Handle the open() syscall
+	 * @param vaddrFileName virtual address of the filename to attempt to open
+	 * @return
+	 */
+	private int handleOpen(int vaddrFileName){
+		if(vaddrFileName == 0x0){
+			return ERROR;
+		}
+
+		String filename = readVirtualMemoryString(vaddrFileName, 256);
+		if(filename == null){
+			return ERROR;
+		}
+
+		OpenFile newFile = ThreadedKernel.fileSystem.open(filename,false);
+
+		// If the file descriptor queue is empty, the max number of open files has been reached
+		if(newFile != null && fileDescriptorQueue.peek() != null){
+			int descriptor = fileDescriptorQueue.poll();
+			fileTable[descriptor] = newFile;
+			return descriptor;
+		}
+
+		return ERROR;
+	}
+
+	private int handleClose(int descriptor){
+		if(descriptor < 0 || descriptor > 15 || fileTable[descriptor] == null){
+			return ERROR;
+		}
+
+		fileTable[descriptor].close();
+		fileTable[descriptor] = null;
+		fileDescriptorQueue.add(descriptor);
+		return 0;
+	}
+
+	private int handleRead(int descriptor, int vaddrReadBuffer, int maxBytesRead){
+
+		if( vaddrReadBuffer == 0x0){
+			return ERROR;
+		}
+
+		if(descriptor < 0 || descriptor > 15 || fileTable[descriptor] == null){
+			return ERROR;
+		}
+
+		if(maxBytesRead < 0) {
+			return ERROR;
+		}
+
+		byte[] readBuffer = new byte[pageSize];
+		if(maxBytesRead <= pageSize){
+
+			int bytesRead = fileTable[descriptor].read(readBuffer,0,maxBytesRead);
+			writeVirtualMemory(vaddrReadBuffer,readBuffer);
+			return bytesRead;
+
+		} else {
+			int bytesReadActual = 0;
+			int bytesReadExpected = 0;
+			int numBytesRetrieved = pageSize;
+			while( bytesReadExpected < maxBytesRead) {
+
+				bytesReadActual += fileTable[descriptor].read(readBuffer,0,numBytesRetrieved);
+				bytesReadExpected += numBytesRetrieved;
+				writeVirtualMemory(vaddrReadBuffer,readBuffer);
+				vaddrReadBuffer += numBytesRetrieved;
+				if(maxBytesRead - bytesReadExpected < pageSize){
+					numBytesRetrieved = maxBytesRead - bytesReadExpected;
+				}
+			}
+			return bytesReadActual;
+		}
+	}
+
+	private int handleUnlink(int vaddrFileName){
+		if(vaddrFileName == 0x0){
+			return ERROR;
+		}
+		String fileName = readVirtualMemoryString(vaddrFileName,256);
+		if(fileName == null){
+			return ERROR;
+		}
+		boolean successful = ThreadedKernel.fileSystem.remove(fileName);
+		if(successful){
+			return 0;
+		}
+		return -1;
+	}
+
 	private static final int syscallHalt = 0, syscallExit = 1, syscallExec = 2,
 			syscallJoin = 3, syscallCreate = 4, syscallOpen = 5,
 			syscallRead = 6, syscallWrite = 7, syscallClose = 8,
@@ -437,10 +615,23 @@ public class UserProcess {
 	 */
 	public int handleSyscall(int syscall, int a0, int a1, int a2, int a3) {
 		switch (syscall) {
-		case syscallHalt:
-			return handleHalt();
-		case syscallExit:
-			return handleExit(a0);
+            case syscallHalt:
+                return handleHalt();
+            case syscallExit:
+                return handleExit(a0);
+            case syscallCreate:
+                return handleCreat(a0);
+			case syscallWrite:
+				return handleWrite(a0,a1,a2);
+			case syscallOpen:
+				return handleOpen(a0);
+			case syscallClose:
+				return handleClose(a0);
+			case syscallRead:
+				return handleRead(a0,a1,a2);
+			case syscallUnlink:
+				return handleUnlink(a0);
+
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
@@ -496,4 +687,12 @@ public class UserProcess {
 	private static final int pageSize = Processor.pageSize;
 
 	private static final char dbgProcess = 'a';
+
+	private OpenFile[] fileTable;
+
+	private LinkedList<Integer> fileDescriptorQueue;
+
+	private static final int intSize = 4;
+
+	private static final int ERROR = -1;
 }

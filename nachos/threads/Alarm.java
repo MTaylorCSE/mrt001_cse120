@@ -63,6 +63,10 @@ public class Alarm {
 	public void waitUntil(long x) {
 
 		boolean intStatus = Machine.interrupt().disable();
+		if(x <= 0) {
+			return;
+		}
+
 		long wakeTime = Machine.timer().getTime() + x;
 
 		KThread.currentThread().setWakeTime(wakeTime);
