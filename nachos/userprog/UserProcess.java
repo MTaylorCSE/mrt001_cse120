@@ -28,6 +28,13 @@ public class UserProcess {
 		pageTable = new TranslationEntry[numPhysPages];
 		for (int i = 0; i < numPhysPages; i++)
 			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+
+		//initialize file descriptor table
+		fileDescriptorTable = new OpenFile[fileTableSize];
+
+		//initialize file descriptors 0 and 1 to standard input and output
+		fileDescriptorTable[0] = UserKernel.console.openForReading();
+		fileDescriptorTable[1] = UserKernel.console.openForWriting();
 	}
 
 	/**
@@ -358,6 +365,176 @@ public class UserProcess {
 	}
 
 	/**
+	 * Handle the create() system call.
+	 *
+	 * @param namePtr - location of name in memory
+	 */
+	private int handleCreate(int namePtr) {
+
+		String fName = readVirtualMemoryString( namePtr, maxNameLength);
+
+		// check whether a string was in the pointer
+		if(fName == null) {
+			Lib.debug(dbgProcess, "File name pointer was invalid");
+			return -1;
+		}
+
+		OpenFile newFile = Machine.stubFileSystem().open( fName ,true);
+
+		// Check whether new file created
+		if (newFile == null){
+			Lib.debug(dbgProcess, "File unsuccessfully created");
+		}
+
+		//do something with OpenFile object
+		return addToFileDescriptorTable(newFile);
+	}
+
+	/**
+	 * Handle the open() system call.
+	 *
+	 * @param name - location of name in memory
+	 */
+	private int handleOpen(int name) {
+
+		String fName = readVirtualMemoryString( name, maxNameLength);
+
+		// check whether a string was in the pointer
+		if(fName == null) {
+			Lib.debug(dbgProcess, "File name pointer was invalid");
+			return -1;
+		}
+
+		OpenFile file = Machine.stubFileSystem().open(fName, false);
+
+		// Check if attempt to open file was successful.
+		if (file == null){
+			Lib.debug(dbgProcess, "File unsuccessfully created");
+			return -1;
+		}
+
+		return addToFileDescriptorTable(file);
+	}
+
+	/**
+	 * Attempt to read up to count bytes into buffer from the file or stream
+	 * referred to by fileDescriptor
+	 *
+	 * @param fileDescriptor
+	 * @param buffer
+	 * @param count
+	 * @return number of bytes read in returned on success. error returns -1
+	 */
+	private int handleRead( int fileDescriptor, int buffer, int count ) {
+		int read = -1;
+		OpenFile file = getFile(fileDescriptor);
+
+		// Checks if file descriptor given was correct
+		if( file == null) {
+			Lib.debug(dbgProcess, "fileDescriptor is invalid");
+			return -1;
+		}
+		// Check whether buffer and count specified are valid
+		if( buffer < 0 ) {
+			Lib.debug(dbgProcess, "Invalid buffer");
+			return read;
+		}
+		if( count < 0 ) {
+			Lib.debug(dbgProcess, "Invalid count");
+			return read;
+		}
+
+		byte buf[] = new byte[count];
+		read = file.read(buf,0,count);
+
+		if(read == -1) {
+			Lib.debug(dbgProcess, "Fatal Error, no bytes were read");
+			return read;
+		}
+
+		read = writeVirtualMemory(buffer, buf, 0, read);
+
+		return read;
+	}
+
+	/**
+	 * Attempt to write up to count bytes from a buffer to the file or stream
+	 * referred to by fileDescriptor.
+	 *
+	 * @param fileDescriptor
+	 * @param buffer
+	 * @param count
+	 * @return
+	 */
+	private int handleWrite( int fileDescriptor, int buffer, int count ) {
+		int written = -1;                         //bytes written
+		OpenFile file = getFile(fileDescriptor);
+
+		if ( file == null) {
+			Lib.debug(dbgProcess, "Invalid file decriptor");
+			return written;
+		}
+		// Check whether buffer and count specified are valid
+		if( buffer < 0 ) {
+			Lib.debug(dbgProcess, "Invalid buffer");
+			return written;
+		}
+		if( count < 0 ) {
+			Lib.debug(dbgProcess, "Invalid count");
+			return written;
+		}
+
+		byte buf[] = new byte[count];
+		written = readVirtualMemory(buffer,buf,0, count);
+		written = file.write(buf, 0, written);
+
+		return written;
+	}
+
+	/**
+	 * Close a file descriptor, so that it no longer refers to any file or
+	 * stream and may be reused. The resources associated with the file
+	 * descriptor are released.
+	 *
+	 * @param fileDescriptor
+	 * @return
+	 */
+	private int handleClose( int fileDescriptor ) {
+		OpenFile file = fileDescriptorTable[fileDescriptor];
+
+		if( file == null ) {
+			Lib.debug(dbgProcess, "Invalid file descriptor");
+			return -1;
+		}
+
+		//remove file from table
+		fileDescriptorTable[fileDescriptor] = null;
+
+		file.close();
+		return 0;
+	}
+
+	/**
+	 * Delete a file from the file system.
+	 *
+	 * @param name
+	 * @return 0 on success, or -1 if an error occurred
+	 */
+	private int handleUnlink( int name ) {
+		String fName = readVirtualMemoryString(name, maxNameLength);
+
+		// check whether a string was in the pointer
+		if(fName == null) {
+			Lib.debug(dbgProcess, "File name pointer was invalid");
+			return -1;
+		}
+
+		if ( !Machine.stubFileSystem().remove(fName) )
+			return -1;
+		else return 0;
+	}
+
+	/**
 	 * Handle the exit() system call.
 	 */
 	private int handleExit(int status) {
@@ -373,6 +550,56 @@ public class UserProcess {
 			syscallJoin = 3, syscallCreate = 4, syscallOpen = 5,
 			syscallRead = 6, syscallWrite = 7, syscallClose = 8,
 			syscallUnlink = 9;
+
+
+
+	//========== Methods that handle file descriptor instructions ============/
+
+
+	/**
+	 * Maps an open file to the fileDecriptor table if there is space
+	 * If file already exists return the file descriptor anyway
+	 *
+	 *
+	 * @param file file to be added
+	 * @return index of file descriptor or -1 if failed to add
+	 */
+	private int addToFileDescriptorTable( OpenFile file ) {
+
+		OpenFile curFile;
+		int empty = -1;            //index of empty file descriptor table entry
+
+		for( int i = 0; i < fileTableSize; i++) {
+			curFile = fileDescriptorTable[i];
+
+			// check for an empty file descriptor table entry
+			if( curFile == null && empty == -1) {
+				empty = i;
+			}
+			// check if file already exist
+			else if( curFile.getName().equals(file.getName())) {
+				System.out.println("File already exist");
+				return i;
+			}
+		}
+
+		// if file doesn't already exist return the first empty slot you found and
+		// put OpenFile there. Will return -1 if table was full and OpenFile didn't
+		// already exist
+		return empty;
+	}
+
+	/**
+	 * Gets the file at file descriptor, or returns null
+	 *
+	 * @param fileDescriptor
+	 * @return file associated with file descriptor
+	 */
+	private OpenFile getFile(int fileDescriptor) {
+		OpenFile file = fileDescriptorTable[fileDescriptor];
+
+		return file;
+	}
 
 	/**
 	 * Handle a syscall exception. Called by <tt>handleException()</tt>. The
@@ -437,14 +664,25 @@ public class UserProcess {
 	 */
 	public int handleSyscall(int syscall, int a0, int a1, int a2, int a3) {
 		switch (syscall) {
-		case syscallHalt:
-			return handleHalt();
-		case syscallExit:
-			return handleExit(a0);
-
-		default:
-			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
-			Lib.assertNotReached("Unknown system call!");
+			case syscallHalt:
+				return handleHalt();
+			case syscallCreate:
+				return handleCreate(a0); //we need to figure out the param
+			case syscallOpen:
+				return handleOpen(a0);
+			case syscallRead:
+				return handleRead(a0, a1, a2);
+			case syscallWrite:
+				return handleWrite(a0, a1, a2);
+			case syscallClose:
+				return handleClose(a0);
+			case syscallUnlink:
+				return handleUnlink(a0);
+			case syscallExit:
+				return handleExit(a0);
+			default:
+				Lib.debug(dbgProcess, "Unknown syscall " + syscall);
+				Lib.assertNotReached("Unknown system call!");
 		}
 		return 0;
 	}
@@ -489,6 +727,8 @@ public class UserProcess {
 	/** The number of pages in the program's stack. */
 	protected final int stackPages = 8;
 
+	protected OpenFile[] fileDescriptorTable;
+
 	private int initialPC, initialSP;
 
 	private int argc, argv;
@@ -496,4 +736,9 @@ public class UserProcess {
 	private static final int pageSize = Processor.pageSize;
 
 	private static final char dbgProcess = 'a';
+
+	private static final int maxNameLength = 256;
+
+	private static final int fileTableSize = 16;
+
 }

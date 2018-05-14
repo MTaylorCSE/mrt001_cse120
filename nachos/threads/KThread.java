@@ -454,11 +454,19 @@ public class KThread {
 		joinTest1();
 		joinTest2();
 //		joinTest3();
-		//joinTest4();
+		joinTest4();
 		System.out.println("==================TEST 5=====================");
 		joinTest5();
 		joinTest6();
 		joinTest7();
+		System.out.println("=================Homework 2===================");
+		KThread t1 = new KThread (new A()).setName ("A");
+		System.out.println ("fee");
+		t1.fork ();
+		System.out.println ("foe");
+		t1.join ();
+		System.out.println ("fun");
+		System.out.println("=================Homework 2===================");
 	}
 
 	private static final char dbgThread = 't';
@@ -699,5 +707,24 @@ public class KThread {
 		});
 		tester.setName("tester").fork();
 		tester.join();
+	}
+
+	private static class A implements Runnable {
+		A () {}
+		public void run () {
+			KThread t2 = new KThread (new B()).setName ("B");
+			System.out.println ("foo");
+			t2.fork ();
+			System.out.println ("far");
+			t2.join ();
+			System.out.println ("fum");
+		}
+	}
+
+	private static class B implements Runnable {
+		B () {}
+		public void run () {
+			System.out.println ("fie");
+		}
 	}
 }
