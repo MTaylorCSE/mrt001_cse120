@@ -25,10 +25,6 @@ public class UserProcess {
 	 * Allocate a new process.
 	 */
 	public UserProcess() {
-		int numPhysPages = Machine.processor().getNumPhysPages();
-		pageTable = new TranslationEntry[numPhysPages];
-		for (int i = 0; i < numPhysPages; i++)
-			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
 
 		fileTable = new OpenFile[16];
 		fileDescriptorQueue = new LinkedList<Integer>();
@@ -150,20 +146,41 @@ public class UserProcess {
 	 * array.
 	 * @return the number of bytes successfully transferred.
 	 */
+	@SuppressWarnings("Duplicates")
 	public int readVirtualMemory(int vaddr, byte[] data, int offset, int length) {
 		Lib.assertTrue(offset >= 0 && length >= 0
 				&& offset + length <= data.length);
 
 		byte[] memory = Machine.processor().getMemory();
 
-		// for now, just assume that virtual addresses equal physical addresses
-		if (vaddr < 0 || vaddr >= memory.length)
+		// check that the vaddr is valid. It is invalid if the vpn is greater than the max vpn given by the length
+		// of the pageTable
+		int vpn = Processor.pageFromAddress(vaddr);
+		if (vaddr < 0 || vpn >= pageTable.length)
 			return 0;
 
-		int amount = Math.min(length, memory.length - vaddr);
-		System.arraycopy(memory, vaddr, data, offset, amount);
+		int physical_offset = Processor.offsetFromAddress(vaddr);
+		int ppn = pageTable[vpn].ppn;
+		int paddr = ppn*pageSize + physical_offset;
+
+		int amount = Math.min(length, (pageTable.length * pageSize) - vaddr);
+		System.arraycopy(memory, paddr, data, offset, amount);
 
 		return amount;
+//------------------------------------------------------------------------------------------------------------------
+//		Lib.assertTrue(offset >= 0 && length >= 0
+//				&& offset + length <= data.length);
+//
+//		byte[] memory = Machine.processor().getMemory();
+//
+//		// for now, just assume that virtual addresses equal physical addresses
+//		if (vaddr < 0 || vaddr >= memory.length)
+//			return 0;
+//
+//		int amount = Math.min(length, memory.length - vaddr);
+//		System.arraycopy(memory, vaddr, data, offset, amount);
+//
+//		return amount;
 	}
 
 	/**
@@ -192,20 +209,40 @@ public class UserProcess {
 	 * memory.
 	 * @return the number of bytes successfully transferred.
 	 */
+	@SuppressWarnings("Duplicates")
 	public int writeVirtualMemory(int vaddr, byte[] data, int offset, int length) {
 		Lib.assertTrue(offset >= 0 && length >= 0
 				&& offset + length <= data.length);
 
 		byte[] memory = Machine.processor().getMemory();
 
-		// for now, just assume that virtual addresses equal physical addresses
-		if (vaddr < 0 || vaddr >= memory.length)
+		// check that the vaddr is valid. It is invalid if the vpn is greater than the max vpn given by the length
+		// of the pageTable
+		int vpn = Processor.pageFromAddress(vaddr);
+		if (vaddr < 0 || vpn >= pageTable.length)
 			return 0;
 
-		int amount = Math.min(length, memory.length - vaddr);
-		System.arraycopy(data, offset, memory, vaddr, amount);
+		int physical_offset = Processor.offsetFromAddress(vaddr);
+		int ppn = pageTable[vpn].ppn;
+		int paddr = ppn*pageSize + physical_offset;
+
+		int amount = Math.min(length, (pageTable.length * pageSize) - vaddr);
+		System.arraycopy(data, offset, memory, paddr, amount);
 
 		return amount;
+//		Lib.assertTrue(offset >= 0 && length >= 0
+//				&& offset + length <= data.length);
+//
+//		byte[] memory = Machine.processor().getMemory();
+//
+//		// for now, just assume that virtual addresses equal physical addresses
+//		if (vaddr < 0 || vaddr >= memory.length)
+//			return 0;
+//
+//		int amount = Math.min(length, memory.length - vaddr);
+//		System.arraycopy(data, offset, memory, vaddr, amount);
+//
+//		return amount;
 	}
 
 	/**
@@ -272,6 +309,12 @@ public class UserProcess {
 		// and finally reserve 1 page for arguments
 		numPages++;
 
+		boolean status = Machine.interrupt().disable();
+		pageTable = new TranslationEntry[numPages];
+		for (int i = 0; i < numPages; i++)
+			pageTable[i] = new TranslationEntry(i, UserKernel.freePhysicalPages.poll(), true, false, false, false);
+		Machine.interrupt().restore(status);
+
 		if (!loadSections())
 			return false;
 
@@ -303,9 +346,12 @@ public class UserProcess {
 	 * @return <tt>true</tt> if the sections were successfully loaded.
 	 */
 	protected boolean loadSections() {
+		// if the number of pages needed is greater than the number of pages available, error
+		boolean status = Machine.interrupt().disable();
 		if (numPages > UserKernel.freePhysicalPages.size()) {
 			coff.close();
 			Lib.debug(dbgProcess, "\tinsufficient physical memory");
+			Machine.interrupt().restore(status);
 			return false;
 		}
 
@@ -313,17 +359,20 @@ public class UserProcess {
 		for (int s = 0; s < coff.getNumSections(); s++) {
 			CoffSection section = coff.getSection(s);
 
+
 			Lib.debug(dbgProcess, "\tinitializing " + section.getName()
 					+ " section (" + section.getLength() + " pages)");
 
 			for (int i = 0; i < section.getLength(); i++) {
 				int vpn = section.getFirstVPN() + i;
 
-				// for now, just assume virtual addresses=physical addresses
-				section.loadPage(i, vpn);
+				// Set the TranslationEntry to be readOnly according to the section's readOnly property
+				pageTable[vpn].readOnly = section.isReadOnly();
+				// the physical page is given by the TranslationEntry at the index given by the vpn
+				section.loadPage(i, pageTable[vpn].ppn);
 			}
 		}
-
+		Machine.interrupt().restore(status);
 		return true;
 	}
 
@@ -331,6 +380,12 @@ public class UserProcess {
 	 * Release any resources allocated by <tt>loadSections()</tt>.
 	 */
 	protected void unloadSections() {
+		boolean status = Machine.interrupt().disable();
+		coff.close();
+		for(int i = 0; i < pageTable.length; i++){
+			UserKernel.freePhysicalPages.add(pageTable[i].ppn);
+		}
+		Machine.interrupt().restore(status);
 	}
 
 	/**
@@ -375,7 +430,7 @@ public class UserProcess {
 		Machine.autoGrader().finishingCurrentProcess(status);
 		// ...and leave it as the top of handleExit so that we
 		// can grade your implementation.
-
+		unloadSections();
 		return 0;
 	}
 
@@ -669,6 +724,7 @@ public class UserProcess {
 		default:
 			Lib.debug(dbgProcess, "Unexpected exception: "
 					+ Processor.exceptionNames[cause]);
+			unloadSections();
 			Lib.assertNotReached("Unexpected exception");
 		}
 	}

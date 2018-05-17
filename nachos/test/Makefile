@@ -32,7 +32,7 @@ NLIB = libnachos.a
 
 TARGETS = halt sh matmult sort echo cat cp mv rm creat1 write1 creat2 creat3 \
           creat4 creat_close1 complex_fileops1 creat0 write4 complex_fileops2 \
-          write10 snakwe
+          write10 snakwe except1
 
 .SECONDARY: $(patsubst %.c,%.o,$(wildcard *.c))
 
