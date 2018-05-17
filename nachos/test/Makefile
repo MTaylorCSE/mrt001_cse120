@@ -1,4 +1,4 @@
-# GNU Makefile for building user programs to run on top of Nachos
+#GNU Makefile for building user programs to run on top of Nachos
 #
 # Things to be aware of:
 #
@@ -31,7 +31,8 @@ LIB = assert atoi printf readline stdio strncmp strcat strcmp strcpy strlen memc
 NLIB = libnachos.a
 
 TARGETS = halt sh matmult sort echo cat cp mv rm creat1 write1 creat2 creat3 \
-          creat4 creat_close1 complex_fileops1 creat0
+          creat4 creat_close1 complex_fileops1 creat0 write4 complex_fileops2 \
+          write10 snakwe
 
 .SECONDARY: $(patsubst %.c,%.o,$(wildcard *.c))
 

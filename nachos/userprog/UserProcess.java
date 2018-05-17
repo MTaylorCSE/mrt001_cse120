@@ -6,9 +6,7 @@ import nachos.userprog.*;
 import nachos.vm.*;
 
 import java.io.EOFException;
-import java.nio.ByteBuffer;
 import java.util.LinkedList;
-import java.util.Queue;
 
 /**
  * Encapsulates the state of a user process that is not contained in its user
@@ -305,7 +303,7 @@ public class UserProcess {
 	 * @return <tt>true</tt> if the sections were successfully loaded.
 	 */
 	protected boolean loadSections() {
-		if (numPages > Machine.processor().getNumPhysPages()) {
+		if (numPages > UserKernel.freePhysicalPages.size()) {
 			coff.close();
 			Lib.debug(dbgProcess, "\tinsufficient physical memory");
 			return false;
@@ -388,7 +386,8 @@ public class UserProcess {
 	 */
 	private int handleCreat(int vaddrFileName){
 
-		if(vaddrFileName == 0x0){
+		byte[] memory = Machine.processor().getMemory();
+		if(vaddrFileName <= 0 || vaddrFileName >= memory.length){
 			return ERROR;
 		}
 
@@ -411,7 +410,8 @@ public class UserProcess {
 
 	private int handleWrite(int descriptor, int vaddrReadBuffer, int maxBytesWritten){
 
-		if( vaddrReadBuffer == 0x0){
+		byte[] memory = Machine.processor().getMemory();
+		if( vaddrReadBuffer <= 0 || vaddrReadBuffer >= memory.length){
 			return ERROR;
 		}
 
@@ -426,7 +426,7 @@ public class UserProcess {
 		byte[] writeBuffer = new byte[pageSize];
 		if(maxBytesWritten <= pageSize){
 
-			readVirtualMemory(vaddrReadBuffer, writeBuffer);
+			readVirtualMemory(vaddrReadBuffer, writeBuffer,0,maxBytesWritten);
 			int bytesWritten = fileTable[descriptor].write(writeBuffer,0,maxBytesWritten);
 			if(bytesWritten != maxBytesWritten){
 				return ERROR;
@@ -461,7 +461,9 @@ public class UserProcess {
 	 * @return
 	 */
 	private int handleOpen(int vaddrFileName){
-		if(vaddrFileName == 0x0){
+
+		byte[] memory = Machine.processor().getMemory();
+		if(vaddrFileName <= 0 || vaddrFileName >= memory.length){
 			return ERROR;
 		}
 
@@ -495,7 +497,8 @@ public class UserProcess {
 
 	private int handleRead(int descriptor, int vaddrReadBuffer, int maxBytesRead){
 
-		if( vaddrReadBuffer == 0x0){
+		byte[] memory = Machine.processor().getMemory();
+		if( vaddrReadBuffer <= 0 || vaddrReadBuffer >= memory.length){
 			return ERROR;
 		}
 
@@ -511,7 +514,7 @@ public class UserProcess {
 		if(maxBytesRead <= pageSize){
 
 			int bytesRead = fileTable[descriptor].read(readBuffer,0,maxBytesRead);
-			writeVirtualMemory(vaddrReadBuffer,readBuffer);
+			writeVirtualMemory(vaddrReadBuffer,readBuffer,0,maxBytesRead);
 			return bytesRead;
 
 		} else {
@@ -533,7 +536,8 @@ public class UserProcess {
 	}
 
 	private int handleUnlink(int vaddrFileName){
-		if(vaddrFileName == 0x0){
+		byte[] memory = Machine.processor().getMemory();
+		if(vaddrFileName <= 0 || vaddrFileName >= memory.length){
 			return ERROR;
 		}
 		String fileName = readVirtualMemoryString(vaddrFileName,256);
@@ -614,6 +618,7 @@ public class UserProcess {
 	 * @return the value to be returned to the user.
 	 */
 	public int handleSyscall(int syscall, int a0, int a1, int a2, int a3) {
+
 		switch (syscall) {
             case syscallHalt:
                 return handleHalt();
@@ -692,7 +697,6 @@ public class UserProcess {
 
 	private LinkedList<Integer> fileDescriptorQueue;
 
-	private static final int intSize = 4;
 
 	private static final int ERROR = -1;
 }
