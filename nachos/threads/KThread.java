@@ -454,7 +454,7 @@ public class KThread {
 		joinTest1();
 		joinTest2();
 //		joinTest3();
-		joinTest4();
+//		joinTest4();
 		System.out.println("==================TEST 5=====================");
 		joinTest5();
 		joinTest6();
