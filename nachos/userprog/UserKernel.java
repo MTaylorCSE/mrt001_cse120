@@ -4,6 +4,8 @@ import nachos.machine.*;
 import nachos.threads.*;
 import nachos.userprog.*;
 
+import java.util.LinkedList;
+
 /**
  * A kernel that can support multiple user processes.
  */
@@ -21,8 +23,14 @@ public class UserKernel extends ThreadedKernel {
 	 */
 	public void initialize(String[] args) {
 		super.initialize(args);
-
 		console = new SynchConsole(Machine.console());
+		pageListLock = new Lock();
+		freePages = new LinkedList<Integer>();
+
+		// initially all pages in memory are free pages
+		for(int i = 0; i < Machine.processor().getNumPhysPages();i++) {
+			freePages.add(i);
+		}
 
 		Machine.processor().setExceptionHandler(new Runnable() {
 			public void run() {
@@ -108,8 +116,51 @@ public class UserKernel extends ThreadedKernel {
 		super.terminate();
 	}
 
+
+	/** TODO: add methods that allocate a free page when the processor requests
+	 * it, as well as release a free page location
+	 * when it is no longer needed. Use lock as suggested in tips
+	 */
+
+	/**
+	 * Allocates free pages when the processor requests it
+	 * @param numPages number of free pages requested
+	 * @return physical page numbers
+	 */
+	public static int[] allocatePages(int numPages) {
+		pageListLock.acquire();
+
+		// Condition where there is not enough memory in M.M
+		if ( numPages > freePages.size()) {
+			pageListLock.release();
+			return null;
+		}
+
+		int[] allocated = new int[numPages];
+		for(int i=0; i<numPages; i++) {
+			allocated[i] = freePages.remove();
+		}
+		pageListLock.release();
+		return allocated;
+	}
+
+
+	/**
+	 * releases a free page
+	 * @param ppn physical page number
+	 */
+	public static void releasePage(int ppn) {
+		pageListLock.acquire();
+		freePages.add(ppn);
+		pageListLock.release();
+	}
+
 	/** Globally accessible reference to the synchronized console. */
 	public static SynchConsole console;
+
+	public static LinkedList<Integer> freePages;
+
+	public static Lock pageListLock;
 
 	// dummy variables to make javac smarter
 	private static Coff dummy1 = null;

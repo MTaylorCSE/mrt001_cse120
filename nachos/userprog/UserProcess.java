@@ -24,10 +24,15 @@ public class UserProcess {
 	 * Allocate a new process.
 	 */
 	public UserProcess() {
+		/**
 		int numPhysPages = Machine.processor().getNumPhysPages();
 		pageTable = new TranslationEntry[numPhysPages];
 		for (int i = 0; i < numPhysPages; i++)
 			pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+		*/
+
+		// TODO need to delay allocation of memory
+
 
 		//initialize file descriptor table
 		fileDescriptorTable = new OpenFile[fileTableSize];
@@ -300,11 +305,18 @@ public class UserProcess {
 	 * @return <tt>true</tt> if the sections were successfully loaded.
 	 */
 	protected boolean loadSections() {
-		if (numPages > Machine.processor().getNumPhysPages()) {
+
+		int[] ppns = UserKernel.allocatePages(numPages);
+
+		// if null there weren't enough free pages to allocate
+		if (ppns == null) {
 			coff.close();
 			Lib.debug(dbgProcess, "\tinsufficient physical memory");
 			return false;
 		}
+
+		// only initialize the required pages
+		pageTable = new TranslationEntry[numPages];
 
 		// load sections
 		for (int s = 0; s < coff.getNumSections(); s++) {
@@ -315,10 +327,18 @@ public class UserProcess {
 
 			for (int i = 0; i < section.getLength(); i++) {
 				int vpn = section.getFirstVPN() + i;
+				// TODO start allocating vpn's
+				int ppn = ppns[vpn];
 
-				// for now, just assume virtual addresses=physical addresses
-				section.loadPage(i, vpn);
+				pageTable[vpn] = new TranslationEntry(vpn, ppn, true, section.isReadOnly(),false, false);
+
+				section.loadPage(i, ppn);
 			}
+		}
+
+		// stack and arguments
+		for( int i = numPages-stackPages-1; i < numPages;i++) {
+			pageTable[i] = new TranslationEntry(i, ppns[i],true, false, false,false);
 		}
 
 		return true;
@@ -328,6 +348,15 @@ public class UserProcess {
 	 * Release any resources allocated by <tt>loadSections()</tt>.
 	 */
 	protected void unloadSections() {
+		coff.close();
+
+		// Tell kernel to release all the allocated pages
+		for(int i = 0; i < numPages; i++) {
+			UserKernel.releasePage(i);
+		}
+
+		pageTable = null;
+		System.gc();  // garbage collector CSE 11 :p
 	}
 
 	/**
@@ -500,7 +529,7 @@ public class UserProcess {
 	 * @return
 	 */
 	private int handleClose( int fileDescriptor ) {
-		OpenFile file = fileDescriptorTable[fileDescriptor];
+		OpenFile file = getFile(fileDescriptor);
 
 		if( file == null ) {
 			Lib.debug(dbgProcess, "Invalid file descriptor");
