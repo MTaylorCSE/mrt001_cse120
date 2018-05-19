@@ -522,7 +522,7 @@ public class UserProcess {
 	/**
 	 * Handle the open() syscall
 	 * @param vaddrFileName virtual address of the filename to attempt to open
-	 * @return the fd of the file if successful, or -1 if an error occurred
+	 * @return
 	 */
 	private int handleOpen(int vaddrFileName){
 
@@ -675,9 +675,7 @@ public class UserProcess {
 		// Make a new process, pass it the filename and arguments, then add it to this process's list of
 		// child processes
         UserProcess process = UserProcess.newUserProcess();
-        if(!process.execute(fileName,argv)){
-        	return ERROR;
-		}
+        Lib.assertTrue(process.execute(fileName,argv));
 		childProcesses.add(process);
 
 		return process.getPID();
