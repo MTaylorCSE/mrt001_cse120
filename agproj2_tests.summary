@@ -5,3 +5,10 @@ PASS : Test write10.c
 FAIL : Test exec1.c
 FAIL : Test join1.c
 
+------[ Sat May 19 11:20:46 2018 ]------
+FAIL : Test write1.c
+FAIL : Test write4.c
+FAIL : Test write10.c
+FAIL : Test exec1.c
+FAIL : Test join1.c
+
