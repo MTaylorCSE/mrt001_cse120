@@ -2,6 +2,7 @@ package nachos.userprog;
 
 import nachos.machine.*;
 import nachos.threads.*;
+import nachos.userprog.*;
 import nachos.vm.*;
 
 import java.io.EOFException;
@@ -25,7 +26,6 @@ public class UserProcess {
 	 */
 	public UserProcess() {
 
-		boolean status = Machine.interrupt().disable();
 		fileTable = new OpenFile[16];
 		fileDescriptorQueue = new LinkedList<Integer>();
 		for(int i = 2; i < 16; i++){
@@ -34,12 +34,6 @@ public class UserProcess {
 
 		fileTable[0] = UserKernel.console.openForReading();
 		fileTable[1] = UserKernel.console.openForWriting();
-
-		childProcesses = new LinkedList<UserProcess>();
-		PID = nextPID;
-		nextPID++;
-
-		Machine.interrupt().restore(status);
 	}
 
 	/**
@@ -78,8 +72,7 @@ public class UserProcess {
 		if (!load(name, args))
 			return false;
 
-		associatedUThread = new UThread(this);
-		associatedUThread.setName(name).fork();
+		new UThread(this).setName(name).fork();
 
 		return true;
 	}
@@ -155,7 +148,6 @@ public class UserProcess {
 	 */
 	@SuppressWarnings("Duplicates")
 	public int readVirtualMemory(int vaddr, byte[] data, int offset, int length) {
-
 		Lib.assertTrue(offset >= 0 && length >= 0
 				&& offset + length <= data.length);
 
@@ -236,7 +228,21 @@ public class UserProcess {
 
 		int amount = Math.min(length, (pageTable.length * pageSize) - vaddr);
 		System.arraycopy(data, offset, memory, paddr, amount);
+
 		return amount;
+//		Lib.assertTrue(offset >= 0 && length >= 0
+//				&& offset + length <= data.length);
+//
+//		byte[] memory = Machine.processor().getMemory();
+//
+//		// for now, just assume that virtual addresses equal physical addresses
+//		if (vaddr < 0 || vaddr >= memory.length)
+//			return 0;
+//
+//		int amount = Math.min(length, memory.length - vaddr);
+//		System.arraycopy(data, offset, memory, vaddr, amount);
+//
+//		return amount;
 	}
 
 	/**
@@ -304,12 +310,6 @@ public class UserProcess {
 		numPages++;
 
 		boolean status = Machine.interrupt().disable();
-
-		// if the number of pages requires is greater than freePhysicalPages.size() (the number of physical pages
-		// available), then fail
-		if(numPages >= UserKernel.freePhysicalPages.size()){
-			return false;
-		}
 		pageTable = new TranslationEntry[numPages];
 		for (int i = 0; i < numPages; i++)
 			pageTable[i] = new TranslationEntry(i, UserKernel.freePhysicalPages.poll(), true, false, false, false);
@@ -346,6 +346,15 @@ public class UserProcess {
 	 * @return <tt>true</tt> if the sections were successfully loaded.
 	 */
 	protected boolean loadSections() {
+		// if the number of pages needed is greater than the number of pages available, error
+		boolean status = Machine.interrupt().disable();
+		if (numPages > UserKernel.freePhysicalPages.size()) {
+			coff.close();
+			Lib.debug(dbgProcess, "\tinsufficient physical memory");
+			Machine.interrupt().restore(status);
+			return false;
+		}
+
 		// load sections
 		for (int s = 0; s < coff.getNumSections(); s++) {
 			CoffSection section = coff.getSection(s);
@@ -363,6 +372,7 @@ public class UserProcess {
 				section.loadPage(i, pageTable[vpn].ppn);
 			}
 		}
+		Machine.interrupt().restore(status);
 		return true;
 	}
 
@@ -406,11 +416,6 @@ public class UserProcess {
 	 */
 	private int handleHalt() {
 
-		//TODO: Make it so that halt works if the last process is calling it
-		if(PID != 0){
-			return 0;
-		}
-
 		Machine.halt();
 
 		Lib.assertNotReached("Machine.halt() did not halt machine!");
@@ -421,20 +426,11 @@ public class UserProcess {
 	 * Handle the exit() system call.
 	 */
 	private int handleExit(int status) {
-		//TODO: make it so that the final process calls KThread.kernel.terminate
 	        // Do not remove this call to the autoGrader...
 		Machine.autoGrader().finishingCurrentProcess(status);
 		// ...and leave it as the top of handleExit so that we
 		// can grade your implementation.
 		unloadSections();
-		for(int i = 0; i < fileTable.length; i++ ){
-			if(fileTable[i] != null){
-				fileTable[i].close();
-				fileTable[i] = null;
-			}
-		}
-		exitStatus = status;
-		UThread.finish();
 		return 0;
 	}
 
@@ -445,7 +441,8 @@ public class UserProcess {
 	 */
 	private int handleCreat(int vaddrFileName){
 
-		if(vaddrFileName <= 0 || Processor.pageFromAddress(vaddrFileName) >= pageTable.length){
+		byte[] memory = Machine.processor().getMemory();
+		if(vaddrFileName <= 0 || vaddrFileName >= memory.length){
 			return ERROR;
 		}
 
@@ -468,8 +465,8 @@ public class UserProcess {
 
 	private int handleWrite(int descriptor, int vaddrReadBuffer, int maxBytesWritten){
 
-
-		if( vaddrReadBuffer <= 0 || Processor.pageFromAddress(vaddrReadBuffer) >= pageTable.length){
+		byte[] memory = Machine.processor().getMemory();
+		if( vaddrReadBuffer <= 0 || vaddrReadBuffer >= memory.length){
 			return ERROR;
 		}
 
@@ -481,18 +478,14 @@ public class UserProcess {
 			return ERROR;
 		}
 
-
-		writeLock.acquire();
 		byte[] writeBuffer = new byte[pageSize];
 		if(maxBytesWritten <= pageSize){
 
 			readVirtualMemory(vaddrReadBuffer, writeBuffer,0,maxBytesWritten);
 			int bytesWritten = fileTable[descriptor].write(writeBuffer,0,maxBytesWritten);
 			if(bytesWritten != maxBytesWritten){
-				writeLock.release();
 				return ERROR;
 			}
-			writeLock.release();
 			return bytesWritten;
 
 		} else {
@@ -509,10 +502,8 @@ public class UserProcess {
 				}
 			}
 			if(bytesWrittenActual != maxBytesWritten){
-				writeLock.release();
 				return ERROR;
 			}
-			writeLock.release();
 			return bytesWrittenActual;
 		}
 
@@ -526,7 +517,8 @@ public class UserProcess {
 	 */
 	private int handleOpen(int vaddrFileName){
 
-		if(vaddrFileName <= 0 || Processor.pageFromAddress(vaddrFileName) >= pageTable.length){
+		byte[] memory = Machine.processor().getMemory();
+		if(vaddrFileName <= 0 || vaddrFileName >= memory.length){
 			return ERROR;
 		}
 
@@ -560,7 +552,8 @@ public class UserProcess {
 
 	private int handleRead(int descriptor, int vaddrReadBuffer, int maxBytesRead){
 
-		if( vaddrReadBuffer <= 0 || Processor.pageFromAddress(vaddrReadBuffer) >= pageTable.length){
+		byte[] memory = Machine.processor().getMemory();
+		if( vaddrReadBuffer <= 0 || vaddrReadBuffer >= memory.length){
 			return ERROR;
 		}
 
@@ -572,14 +565,11 @@ public class UserProcess {
 			return ERROR;
 		}
 
-		readLock.acquire();
-
 		byte[] readBuffer = new byte[pageSize];
 		if(maxBytesRead <= pageSize){
 
 			int bytesRead = fileTable[descriptor].read(readBuffer,0,maxBytesRead);
 			writeVirtualMemory(vaddrReadBuffer,readBuffer,0,maxBytesRead);
-			readLock.release();
 			return bytesRead;
 
 		} else {
@@ -596,136 +586,26 @@ public class UserProcess {
 					numBytesRetrieved = maxBytesRead - bytesReadExpected;
 				}
 			}
-			readLock.release();
 			return bytesReadActual;
 		}
 	}
 
-	private int handleUnlink(int vaddrFileName) {
-		if (vaddrFileName <= 0 || Processor.pageFromAddress(vaddrFileName) >= pageTable.length) {
+	private int handleUnlink(int vaddrFileName){
+		byte[] memory = Machine.processor().getMemory();
+		if(vaddrFileName <= 0 || vaddrFileName >= memory.length){
 			return ERROR;
 		}
-		String fileName = readVirtualMemoryString(vaddrFileName, 256);
-		if (fileName == null) {
+		String fileName = readVirtualMemoryString(vaddrFileName,256);
+		if(fileName == null){
 			return ERROR;
 		}
 		boolean successful = ThreadedKernel.fileSystem.remove(fileName);
-		if (successful) {
+		if(successful){
 			return 0;
 		}
 		return -1;
 	}
 
-	/**
-	 * Handles the exec() system call
-	 * @param vaddrFileName Pointer to the vaddress where the filename is stored
-	 * @param argc Number of arguments to pass to the new process
-	 * @param vaddrArgv Pointer to the vaddress of an array of other pointers for the arguments
-	 * @return the PID of the new process if successful or -1 if not
-	 */
-	private int handleExec(int vaddrFileName, int argc, int vaddrArgv){
-		// First, check validity of each argument
-
-		if(vaddrFileName <= 0 || Processor.pageFromAddress(vaddrFileName) >= pageTable.length) {
-			return ERROR;
-		}
-
-		if(argc < 0){
-			return ERROR;
-		}
-
-		if(vaddrArgv <= 0 || Processor.pageFromAddress(vaddrArgv) >= pageTable.length){
-			return ERROR;
-		}
-
-		// Get filename from vaddr
-		String fileName = readVirtualMemoryString(vaddrFileName,256);
-		if(fileName == null){
-			return ERROR;
-		}
-
-
-		// Need to get strings from the array of char pointers passed in, but we just have a single pointer. Accessing
-		// them iteratively after retrieving the full array of pointers.
-		byte[] charPointerArray = new byte[INTLENGTH*argc];
-		int bytesRead = readVirtualMemory(vaddrArgv,charPointerArray);
-
-		// It should probably be an error if we don't retrieve the entire array of pointers
-		if(bytesRead < charPointerArray.length){
-			return ERROR;
-		}
-
-		String[] argv = new String[argc];
-		// Iteratively getting the pointer from the array of pointers, then retrieving the string from that pointer\
-		// Reading the array backwards because of endianness
-		for(int i = argc; i > 0; i--){
-			int vaddrArgString = 0;
-			vaddrArgString += charPointerArray[i*INTLENGTH-1];
-			for(int j = 2; j <= 4; j++){
-				vaddrArgString = vaddrArgString << 8;
-				vaddrArgString += charPointerArray[i*INTLENGTH-j];
-			}
-
-			if(vaddrArgString <= 0 || Processor.pageFromAddress(vaddrArgString) >= pageTable.length){
-				return ERROR;
-			}
-			argv[i-1] = readVirtualMemoryString(vaddrArgString,256);
-		}
-
-		// Make a new process, pass it the filename and arguments, then add it to this process's list of
-		// child processes
-        UserProcess process = UserProcess.newUserProcess();
-        Lib.assertTrue(process.execute(fileName,argv));
-		childProcesses.add(process);
-
-		return process.getPID();
-	}
-
-	/**
-	 * handles the join() syscall. Can only be called by a parent on its child
-	 * @param PID the PID of the child process to join on
-	 * @param vaddrStatus the virtual address where the exit status of the child is stored
-	 * @return the exit status of the child process
-	 */
-	private int handleJoin(int PID, int vaddrStatus){
-
-		// Verify that vaddrStatus is a valid virtual address
-		if(vaddrStatus <= 0 || Processor.pageFromAddress(vaddrStatus) >= pageTable.length){
-			return ERROR;
-		}
-
-		// Verify that given PID is a valid child PID
-		if(childProcesses.isEmpty()){
-			return ERROR;
-		}
-
-		UserProcess childProcess;
-		for(int i = 0; i < childProcesses.size(); i++){
-			childProcess = childProcesses.get(i);
-			if(childProcess.getPID() == PID){
-				childProcess.getAssociatedUThread().join();
-				childProcesses.remove(i);
-				int childExitStatus = childProcess.getExitStatus();
-				if(childExitStatus == -1){
-					return 0;
-				} else {
-					byte[] exitStatusBytes = new byte[INTLENGTH];
-					exitStatusBytes[0] = (byte) (0x000000FF & childExitStatus);
-					exitStatusBytes[1] = (byte) (0x0000FF00 & childExitStatus);
-					exitStatusBytes[2] = (byte) (0x00FF0000 & childExitStatus);
-					exitStatusBytes[3] = (byte) (0xFF000000 & childExitStatus);
-					int bytesWritten = writeVirtualMemory(vaddrStatus,exitStatusBytes);
-					if(bytesWritten < INTLENGTH){
-						return ERROR;
-					}
-					return 1;
-				}
-			}
-		}
-
-
-		return ERROR;
-	}
 	private static final int syscallHalt = 0, syscallExit = 1, syscallExec = 2,
 			syscallJoin = 3, syscallCreate = 4, syscallOpen = 5,
 			syscallRead = 6, syscallWrite = 7, syscallClose = 8,
@@ -811,10 +691,7 @@ public class UserProcess {
 				return handleRead(a0,a1,a2);
 			case syscallUnlink:
 				return handleUnlink(a0);
-			case syscallExec:
-				return handleExec(a0,a1,a2);
-			case syscallJoin:
-				return handleJoin(a0,a1);
+
 
 		default:
 			Lib.debug(dbgProcess, "Unknown syscall " + syscall);
@@ -831,7 +708,6 @@ public class UserProcess {
 	 * @param cause the user exception that occurred.
 	 */
 	public void handleException(int cause) {
-		boolean status = Machine.interrupt().disable();
 		Processor processor = Machine.processor();
 
 		switch (cause) {
@@ -848,28 +724,11 @@ public class UserProcess {
 		default:
 			Lib.debug(dbgProcess, "Unexpected exception: "
 					+ Processor.exceptionNames[cause]);
-			handleExit(-1);
+			unloadSections();
+			Lib.assertNotReached("Unexpected exception");
 		}
-		Machine.interrupt().restore(status);
 	}
 
-
-	public int getPID(){
-		return PID;
-	}
-
-	public UThread getAssociatedUThread()
-	{
-		return associatedUThread;
-	}
-
-	/**
-	 * Getter for the exit status of this process. It is an error to call this process
-	 * @return
-	 */
-	public int getExitStatus(){
-		return exitStatus;
-	}
 	/** The program being run by this process. */
 	protected Coff coff;
 
@@ -893,21 +752,7 @@ public class UserProcess {
 	private OpenFile[] fileTable;
 
 	private LinkedList<Integer> fileDescriptorQueue;
-	private static final int INTLENGTH = 4;
+
 
 	private static final int ERROR = -1;
-
-	private int PID;
-
-	private LinkedList<UserProcess> childProcesses;
-
-	private static int nextPID = 1;
-
-	private UThread associatedUThread;
-
-	private static Lock readLock = new Lock();
-	private static Lock writeLock = new Lock();
-
-	private int exitStatus;
-
 }

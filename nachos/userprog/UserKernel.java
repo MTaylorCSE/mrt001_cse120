@@ -106,7 +106,6 @@ public class UserKernel extends ThreadedKernel {
 		KThread.currentThread().finish();
 	}
 
-
 	/**
 	 * Terminate this kernel. Never returns.
 	 */
